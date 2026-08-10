@@ -44,6 +44,7 @@ export default function Sidebar({ activeTab, setActiveTab, currentUser, onLogout
   // Define ALL possible navigation items
   const allNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin'] },
+    { id: 'payments', label: 'Payment Ledger', icon: IndianRupee, roles: ['admin', 'studio', 'editor'] },
     { id: 'financial_overview', label: 'Financial Overview', icon: TrendingUp, roles: ['admin', 'studio', 'editor'] },
     { id: 'projects', label: 'Projects', icon: Film, roles: ['admin', 'editor', 'studio'] },
     { id: 'registry', label: 'New Project', icon: Plus, roles: ['admin', 'editor', 'studio'] },

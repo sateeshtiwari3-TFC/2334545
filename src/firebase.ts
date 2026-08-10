@@ -298,6 +298,19 @@ export async function seedDatabaseIfEmpty() {
       batch.set(docRef, notif);
     });
 
+    // 11. Seed Default Payment History
+    const defaultPayments = [
+      { id: 'pay-001', entityId: 'studio-kk', entityType: 'studio', projectId: 'PRJ-2026-001', projectCoupleName: 'Aarav & Meera', amount: 40000, date: '2026-05-15', paymentMethod: 'UPI', notes: 'Advance payment received via GPay from Wedding By KK', receivedFrom: 'Satish Tiwari', createdAt: new Date() },
+      { id: 'pay-002', entityId: 'studio-moment', entityType: 'studio', projectId: 'PRJ-2026-002', projectCoupleName: 'Rohan & Dia', amount: 60000, date: '2026-06-03', paymentMethod: 'Bank Transfer', notes: 'First milestone payment received from Moment Innovator', receivedFrom: 'Amit Verma', createdAt: new Date() },
+      { id: 'pay-003', entityId: 'editor-vansh', entityType: 'editor', projectId: 'PRJ-2026-001', projectCoupleName: 'Aarav & Meera', amount: 15000, date: '2026-06-18', paymentMethod: 'UPI', notes: 'Partial payout sent to Vansh Tiwari for Aarav & Meera teaser cut', createdAt: new Date() },
+      { id: 'pay-004', entityId: 'studio-kriti', entityType: 'studio', projectId: 'PRJ-2026-004', projectCoupleName: 'Kabir & Rhea', amount: 70000, date: '2026-04-20', paymentMethod: 'Bank Transfer', notes: 'Full project payment received from Kriti Photo', receivedFrom: 'Kriti Sen', createdAt: new Date() }
+    ];
+
+    defaultPayments.forEach(pay => {
+      const docRef = doc(db, 'editorPayments', pay.id);
+      batch.set(docRef, pay);
+    });
+
     await batch.commit();
     console.log("Database seeded successfully!");
   } catch (error) {

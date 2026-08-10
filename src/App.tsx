@@ -45,6 +45,7 @@ import LoginView from './components/LoginView';
 import GeminiAIView from './components/GeminiAIView';
 import InvoiceView from './components/InvoiceView';
 import FinancialOverviewView from './components/FinancialOverviewView';
+import PaymentsLedgerView from './components/PaymentsLedgerView';
 import { useDeadlineRunner } from './hooks/useDeadlineRunner';
 import { Zap, X } from 'lucide-react';
 
@@ -348,10 +349,10 @@ export default function App() {
   const handleUpdateProject = async (id: string, updates: Partial<Project>) => {
     const docRef = doc(db, 'projects', id);
     const cleanedUpdates = cleanUndefined(updates);
-    await updateDoc(docRef, {
+    await setDoc(docRef, {
       ...cleanedUpdates,
       updatedAt: serverTimestamp()
-    });
+    }, { merge: true });
   };
 
   const handleDeleteProject = async (id: string) => {
@@ -372,7 +373,7 @@ export default function App() {
 
   const handleResolveRevision = async (revId: string) => {
     const docRef = doc(db, 'revisionHistory', revId);
-    await updateDoc(docRef, { status: 'resolved' });
+    await setDoc(docRef, { status: 'resolved' }, { merge: true });
   };
 
   const handleDeleteRevision = async (revId: string) => {
@@ -399,7 +400,7 @@ export default function App() {
       sanitizedUpdates.logoUrl = await compressImage(sanitizedUpdates.logoUrl, 400, 400, 0.7);
     }
     const docRef = doc(db, 'studios', id);
-    await updateDoc(docRef, cleanUndefined(sanitizedUpdates));
+    await setDoc(docRef, cleanUndefined(sanitizedUpdates), { merge: true });
   };
 
   const handleDeleteStudio = async (id: string) => {
@@ -420,7 +421,7 @@ export default function App() {
 
   const handleUpdateEditor = async (id: string, updates: Partial<Editor>) => {
     const docRef = doc(db, 'editors', id);
-    await updateDoc(docRef, cleanUndefined(updates));
+    await setDoc(docRef, cleanUndefined(updates), { merge: true });
   };
 
   const handleDeleteEditor = async (id: string) => {
@@ -441,7 +442,7 @@ export default function App() {
 
   const handleUpdateExpense = async (id: string, updates: Partial<Expense>) => {
     const docRef = doc(db, 'expenses', id);
-    await updateDoc(docRef, cleanUndefined(updates));
+    await setDoc(docRef, cleanUndefined(updates), { merge: true });
   };
 
   const handleDeleteExpense = async (id: string) => {
@@ -469,8 +470,16 @@ export default function App() {
   };
 
   const handleUpdatePayment = async (id: string, updates: Partial<PaymentHistory>) => {
-    const docRef = doc(db, 'editorPayments', id);
-    await updateDoc(docRef, cleanUndefined(updates));
+    try {
+      console.log("handleUpdatePayment initiating for ID:", id, updates);
+      const docRef = doc(db, 'editorPayments', id);
+      await setDoc(docRef, cleanUndefined(updates), { merge: true });
+      console.log("handleUpdatePayment completed successfully for ID:", id);
+    } catch (error: any) {
+      console.error("Error updating payment in Firestore:", error);
+      alert("Failed to update payment record: " + (error?.message || String(error)));
+      throw error;
+    }
   };
 
   const handleDeletePayment = async (id: string) => {
@@ -767,6 +776,22 @@ export default function App() {
             onDeleteProject={handleDeleteProject}
             onDeletePayment={handleDeletePayment}
             onUpdatePayment={handleUpdatePayment}
+            onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        );
+      case 'payments':
+        return (
+          <PaymentsLedgerView
+            payments={payments}
+            projects={projects}
+            studios={studios}
+            editors={editors}
+            expenses={expenses}
+            userRole={currentUser?.role || 'admin'}
+            onLogPayment={handleLogPayment}
+            onUpdatePayment={handleUpdatePayment}
+            onDeletePayment={handleDeletePayment}
+            onUpdateProject={handleUpdateProject}
           />
         );
       case 'gemini':
@@ -819,6 +844,7 @@ export default function App() {
           <StudiosView
             studios={studios}
             projects={projects}
+            payments={payments}
             onAddStudio={handleAddStudio}
             onUpdateStudio={handleUpdateStudio}
             onDeleteStudio={handleDeleteStudio}

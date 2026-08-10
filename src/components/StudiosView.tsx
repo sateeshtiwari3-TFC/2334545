@@ -20,13 +20,14 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import SwipeableCard from './SwipeableCard';
 import ParallaxCard from './ParallaxCard';
-import { Studio, Project } from '../types';
+import { Studio, Project, PaymentHistory } from '../types';
 import Logo from './Logo';
 import { compressImage } from '../utils';
 
 interface StudiosViewProps {
   studios: Studio[];
   projects: Project[];
+  payments?: PaymentHistory[];
   onAddStudio: (studio: Omit<Studio, 'createdAt'>) => Promise<void>;
   onUpdateStudio: (id: string, updates: Partial<Studio>) => Promise<void>;
   onDeleteStudio: (id: string) => Promise<void>;
@@ -35,6 +36,7 @@ interface StudiosViewProps {
 const StudiosView = React.memo(function StudiosView({
   studios,
   projects,
+  payments = [],
   onAddStudio,
   onUpdateStudio,
   onDeleteStudio
@@ -183,8 +185,15 @@ const StudiosView = React.memo(function StudiosView({
         {studios.map((studio) => {
           const studioProjects = projects.filter(p => p.studioId === studio.id);
           const totalBilling = studioProjects.reduce((sum, p) => sum + (p.projectAmount || 0), 0);
-          const totalPaid = studioProjects.reduce((sum, p) => sum + (p.advancePayment || 0), 0);
-          const outstanding = totalBilling - totalPaid;
+          
+          const studioPayments = payments.filter(pay => pay.entityId === studio.id && pay.entityType === 'studio');
+          const totalPaidFromPayments = studioPayments.reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0);
+          const projectAdvancesNotLogged = studioProjects.reduce((sum, p) => {
+            const hasDoc = payments.some(pay => pay.projectId === p.id && pay.entityType === 'studio');
+            return hasDoc ? sum : sum + (p.advancePayment || 0);
+          }, 0);
+          const totalPaid = totalPaidFromPayments + projectAdvancesNotLogged;
+          const outstanding = Math.max(0, totalBilling - totalPaid);
           
           return (
             <motion.div
@@ -312,8 +321,15 @@ const StudiosView = React.memo(function StudiosView({
                   {(() => {
                     const studioProjects = projects.filter(p => p.studioId === selectedStudio.id);
                     const totalBilling = studioProjects.reduce((sum, p) => sum + (p.projectAmount || 0), 0);
-                    const totalPaid = studioProjects.reduce((sum, p) => sum + (p.advancePayment || 0), 0);
-                    const outstanding = totalBilling - totalPaid;
+                    
+                    const studioPayments = payments.filter(pay => pay.entityId === selectedStudio.id && pay.entityType === 'studio');
+                    const totalPaidFromPayments = studioPayments.reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0);
+                    const projectAdvancesNotLogged = studioProjects.reduce((sum, p) => {
+                      const hasDoc = payments.some(pay => pay.projectId === p.id && pay.entityType === 'studio');
+                      return hasDoc ? sum : sum + (p.advancePayment || 0);
+                    }, 0);
+                    const totalPaid = totalPaidFromPayments + projectAdvancesNotLogged;
+                    const outstanding = Math.max(0, totalBilling - totalPaid);
 
                     return (
                       <div className="grid grid-cols-3 gap-3">

@@ -249,24 +249,36 @@ const PRESET_AVATARS = [
 
   const handleLogPaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEditor || paymentAmount <= 0) return;
+    if (!selectedEditor) {
+      alert("Please select a video editor first.");
+      return;
+    }
+    if (paymentAmount <= 0) {
+      alert("Please enter a valid payment amount greater than ₹0.");
+      return;
+    }
 
-    const matchedProj = projects.find(p => p.id === paymentProjectId);
+    try {
+      const matchedProj = projects.find(p => p.id === paymentProjectId);
 
-    await onLogPayment({
-      entityId: selectedEditor.id,
-      entityType: 'editor',
-      projectId: paymentProjectId,
-      projectCoupleName: matchedProj ? matchedProj.coupleName : 'Office Advance / Bonus',
-      amount: paymentAmount,
-      date: new Date().toISOString().split('T')[0],
-      paymentMethod,
-      notes: paymentNotes
-    });
+      await onLogPayment({
+        entityId: selectedEditor.id,
+        entityType: 'editor',
+        projectId: paymentProjectId || 'general_ledger',
+        projectCoupleName: matchedProj ? matchedProj.coupleName : 'Office Advance / Bonus',
+        amount: paymentAmount,
+        date: new Date().toISOString().split('T')[0],
+        paymentMethod,
+        notes: paymentNotes
+      });
 
-    setPaymentAmount(0);
-    setPaymentNotes('');
-    setIsLoggingPayment(false);
+      setPaymentAmount(0);
+      setPaymentNotes('');
+      setIsLoggingPayment(false);
+    } catch (err: any) {
+      console.error("Error recording payment in EditorsView:", err);
+      alert("Failed to record payment: " + (err?.message || String(err)));
+    }
   };
 
   const myEditor = editors.find(

@@ -80,6 +80,7 @@ interface DashboardViewProps {
   payments: PaymentHistory[];
   onLogPayment: (pay: Omit<PaymentHistory, 'id' | 'createdAt'>) => Promise<void>;
   onUpdateProject: (id: string, updates: Partial<Project>) => Promise<void>;
+  onNavigateTab?: (tab: string) => void;
 }
 
 const DashboardView = React.memo(function DashboardView({
@@ -93,7 +94,8 @@ const DashboardView = React.memo(function DashboardView({
   isOnline,
   payments = [],
   onLogPayment,
-  onUpdateProject
+  onUpdateProject,
+  onNavigateTab
 }: DashboardViewProps) {
   const [activeTheme, setActiveTheme] = useState<'classic' | 'organic'>('organic');
   const [reminderTab, setReminderTab] = useState<'payment' | 'project'>('payment');
@@ -180,18 +182,37 @@ const DashboardView = React.memo(function DashboardView({
   const [paymentSuccess, setPaymentSuccess] = useState('');
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
-  // Reset selected studio and project when modal opens
-  useEffect(() => {
-    if (isPaymentModalOpen) {
+  // Helper to open payment modal cleanly with prefilled parameters
+  const openPaymentModal = (
+    type: 'studio' | 'editor' = 'studio',
+    studioOrEditorId = '',
+    projectId = '',
+    amount = 0
+  ) => {
+    setPaymentType(type);
+    if (type === 'studio') {
+      const targetStudio = studioOrEditorId || selectedStudioId || (studios.length > 0 ? studios[0].id : '');
+      setSelectedStudioId(targetStudio);
       setSelectedEditorIdToPay('');
-      setSelectedProjectId('');
-      setPaymentAmount(0);
-      setPaymentNotes('');
+      const foundStudio = studios.find(s => s.id === targetStudio);
+      if (foundStudio) {
+        setPaymentReceivedFrom(foundStudio.ownerName || foundStudio.name || '');
+      } else {
+        setPaymentReceivedFrom('');
+      }
+    } else {
+      const targetEditor = studioOrEditorId || selectedEditorIdToPay || (editors.length > 0 ? editors[0].id : '');
+      setSelectedEditorIdToPay(targetEditor);
+      setSelectedStudioId('');
       setPaymentReceivedFrom('');
-      setPaymentError('');
-      setPaymentSuccess('');
     }
-  }, [isPaymentModalOpen]);
+    setSelectedProjectId(projectId);
+    setPaymentAmount(amount);
+    setPaymentNotes('');
+    setPaymentError('');
+    setPaymentSuccess('');
+    setIsPaymentModalOpen(true);
+  };
 
   // Calculate general studio financial states
   const studioFinancialSummary = useMemo(() => {
@@ -346,83 +367,43 @@ const DashboardView = React.memo(function DashboardView({
             playCinematicChime();
             setPaymentSuccess(`Successfully recorded payment of ₹${paymentAmount.toLocaleString('en-IN')} for ${proj.coupleName}!`);
           }
-        } else if (studioProjects.length === 0) {
-          // If no projects, log a general ledger entry
+        } else {
+          // Log EXACTLY ONE payment record in Firestore for the full paymentAmount
+          const primaryProj = studioProjects[0];
           const paymentData = {
             entityId: selectedStudioId,
             entityType: 'studio' as const,
-            projectId: 'general_ledger',
-            projectCoupleName: 'General Studio Payment',
+            projectId: primaryProj ? primaryProj.id : 'general_ledger',
+            projectCoupleName: primaryProj ? primaryProj.coupleName : 'General Studio Payment',
             amount: paymentAmount,
             date: paymentDate,
             paymentMethod,
-            notes: paymentNotes || `Received payment from ${studio.name} for general ledger balance.`,
+            notes: paymentNotes || `Received payment from ${studio.name} for studio balance.`,
             receivedFrom: paymentReceivedFrom.trim() || studio.ownerName || studio.name
           };
           await onLogPayment(paymentData);
-          playCinematicChime();
-          setPaymentSuccess(`Successfully recorded payment of ₹${paymentAmount.toLocaleString('en-IN')} from ${studio.name} to general ledger!`);
-        } else {
-          // Reconcile across outstanding projects first
-          let remainingPayAmount = paymentAmount;
-          const outstandingProjects = studioProjects.filter(p => (p.remainingBalance || 0) > 0);
 
-          if (outstandingProjects.length > 0) {
-            for (const proj of outstandingProjects) {
+          // Update project outstanding balances if projects exist
+          if (studioProjects.length > 0) {
+            let remainingPayAmount = paymentAmount;
+            const outstandingProjects = studioProjects.filter(p => (p.remainingBalance || 0) > 0);
+            const targetList = outstandingProjects.length > 0 ? outstandingProjects : studioProjects;
+
+            for (const proj of targetList) {
               if (remainingPayAmount <= 0) break;
               const amountToApply = Math.min(proj.remainingBalance || 0, remainingPayAmount);
-              if (amountToApply > 0) {
-                const paymentData = {
-                  entityId: selectedStudioId,
-                  entityType: 'studio' as const,
-                  projectId: proj.id,
-                  projectCoupleName: proj.coupleName,
-                  amount: amountToApply,
-                  date: paymentDate,
-                  paymentMethod,
-                  notes: paymentNotes || `Received payment for ${proj.coupleName} Wedding film.`,
-                  receivedFrom: paymentReceivedFrom.trim() || studio.ownerName || studio.name
-                };
-                await onLogPayment(paymentData);
-
-                const newAdvance = (proj.advancePayment || 0) + amountToApply;
-                const newRemaining = Math.max(0, (proj.projectAmount || 0) - newAdvance);
-                await onUpdateProject(proj.id, {
-                  advancePayment: newAdvance,
-                  remainingBalance: newRemaining
-                });
-
-                remainingPayAmount -= amountToApply;
-              }
+              const newAdvance = (proj.advancePayment || 0) + (amountToApply > 0 ? amountToApply : remainingPayAmount);
+              const newRemaining = Math.max(0, (proj.projectAmount || 0) - newAdvance);
+              await onUpdateProject(proj.id, {
+                advancePayment: newAdvance,
+                remainingBalance: newRemaining
+              });
+              remainingPayAmount -= (amountToApply > 0 ? amountToApply : remainingPayAmount);
             }
           }
 
-          if (remainingPayAmount > 0) {
-            const targetProj = studioProjects[0];
-            const currentAdvance = (targetProj.advancePayment || 0) + (outstandingProjects[0]?.id === targetProj.id ? Math.min(targetProj.remainingBalance || 0, paymentAmount) : 0);
-            const paymentData = {
-              entityId: selectedStudioId,
-              entityType: 'studio' as const,
-              projectId: targetProj.id,
-              projectCoupleName: targetProj.coupleName,
-              amount: remainingPayAmount,
-              date: paymentDate,
-              paymentMethod,
-              notes: paymentNotes || `Received payment for ${targetProj.coupleName} Wedding film.`,
-              receivedFrom: paymentReceivedFrom.trim() || studio.ownerName || studio.name
-            };
-            await onLogPayment(paymentData);
-
-            const newAdvance = currentAdvance + remainingPayAmount;
-            const newRemaining = Math.max(0, (targetProj.projectAmount || 0) - newAdvance);
-            await onUpdateProject(targetProj.id, {
-              advancePayment: newAdvance,
-              remainingBalance: newRemaining
-            });
-          }
-
           playCinematicChime();
-          setPaymentSuccess(`Successfully recorded payment of ₹${paymentAmount.toLocaleString('en-IN')} from ${studio.name}! Reconciled across projects.`);
+          setPaymentSuccess(`Successfully recorded payment of ₹${paymentAmount.toLocaleString('en-IN')} from ${studio.name}!`);
         }
       } else {
         // editor payout
@@ -435,79 +416,39 @@ const DashboardView = React.memo(function DashboardView({
 
         const editorProjects = projects.filter(p => p.assignedEditorId === selectedEditorIdToPay || p.secondEditorId === selectedEditorIdToPay);
 
-        if (editorProjects.length === 0) {
-          // Log a general ledger entry for editor
-          const paymentData = {
-            entityId: selectedEditorIdToPay,
-            entityType: 'editor' as const,
-            projectId: 'general_ledger',
-            projectCoupleName: 'General Editor Payout',
-            amount: paymentAmount,
-            date: paymentDate,
-            paymentMethod,
-            notes: paymentNotes || `Paid to editor ${editor.name} for general services.`
-          };
-          await onLogPayment(paymentData);
-          setPaymentSuccess(`Successfully recorded payout of ₹${paymentAmount.toLocaleString('en-IN')} to editor ${editor.name}!`);
-        } else {
-          // Calculate pending balance for this editor on each project, and reconcile
-          let remainingPayAmount = paymentAmount;
-          
-          const projectsWithPending = editorProjects.map(p => {
-            let budget = 0;
-            if (p.isSplitProject) {
-              if (p.assignedEditorId === selectedEditorIdToPay) budget = p.firstEditorShare || 0;
-              else if (p.secondEditorId === selectedEditorIdToPay) budget = p.secondEditorShare || 0;
-            } else {
-              budget = p.editorPayment || 0;
-            }
-
-            const alreadyPaid = payments
-              .filter(pay => pay.projectId === p.id && pay.entityId === selectedEditorIdToPay && pay.entityType === 'editor')
-              .reduce((sum, pay) => sum + (pay.amount || 0), 0);
-
-            const pending = Math.max(0, budget - alreadyPaid);
-            return { p, pending };
-          }).filter(item => item.pending > 0);
-
-          if (projectsWithPending.length > 0) {
-            for (const item of projectsWithPending) {
-              if (remainingPayAmount <= 0) break;
-              const amountToApply = Math.min(item.pending, remainingPayAmount);
-              if (amountToApply > 0) {
-                const paymentData = {
-                  entityId: selectedEditorIdToPay,
-                  entityType: 'editor' as const,
-                  projectId: item.p.id,
-                  projectCoupleName: item.p.coupleName,
-                  amount: amountToApply,
-                  date: paymentDate,
-                  paymentMethod,
-                  notes: paymentNotes || `Paid to editor ${editor.name} for ${item.p.coupleName} Wedding film.`
-                };
-                await onLogPayment(paymentData);
-                remainingPayAmount -= amountToApply;
-              }
-            }
-          }
-
-          if (remainingPayAmount > 0) {
-            const targetProj = projectsWithPending[0]?.p || editorProjects[0];
+        if (selectedProjectId) {
+          const proj = projects.find(p => p.id === selectedProjectId);
+          if (proj) {
             const paymentData = {
               entityId: selectedEditorIdToPay,
               entityType: 'editor' as const,
-              projectId: targetProj.id,
-              projectCoupleName: targetProj.coupleName,
-              amount: remainingPayAmount,
+              projectId: proj.id,
+              projectCoupleName: proj.coupleName,
+              amount: paymentAmount,
               date: paymentDate,
               paymentMethod,
-              notes: paymentNotes || `Paid to editor ${editor.name} for ${targetProj.coupleName} Wedding film.`
+              notes: paymentNotes || `Paid to editor ${editor.name} for ${proj.coupleName} Wedding film.`
             };
             await onLogPayment(paymentData);
+            playCinematicChime();
+            setPaymentSuccess(`Successfully recorded payout of ₹${paymentAmount.toLocaleString('en-IN')} to editor ${editor.name}!`);
           }
-
+        } else {
+          // Log EXACTLY ONE payout record in Firestore for the full paymentAmount
+          const targetProj = editorProjects[0];
+          const paymentData = {
+            entityId: selectedEditorIdToPay,
+            entityType: 'editor' as const,
+            projectId: targetProj ? targetProj.id : 'general_ledger',
+            projectCoupleName: targetProj ? targetProj.coupleName : 'General Editor Payout',
+            amount: paymentAmount,
+            date: paymentDate,
+            paymentMethod,
+            notes: paymentNotes || `Paid to editor ${editor.name} for video editing services.`
+          };
+          await onLogPayment(paymentData);
           playCinematicChime();
-          setPaymentSuccess(`Successfully recorded payout of ₹${paymentAmount.toLocaleString('en-IN')} to editor ${editor.name}! Reconciled across projects.`);
+          setPaymentSuccess(`Successfully recorded payout of ₹${paymentAmount.toLocaleString('en-IN')} to editor ${editor.name}!`);
         }
       }
 
@@ -1702,13 +1643,25 @@ const DashboardView = React.memo(function DashboardView({
             </div>
             <p className="text-xs text-gray-400 mt-1">Live tracking of payments received from studios and paid out to editors.</p>
           </div>
-          <button
-            onClick={() => setIsPaymentModalOpen(true)}
-            className="px-4 py-2 bg-gradient-to-r from-gold-600 to-gold-500 hover:from-gold-500 hover:to-gold-400 text-charcoal-950 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center space-x-2 shadow-lg hover:scale-[1.02]"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Record Payment</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                if (onNavigateTab) onNavigateTab('payments');
+                else onQuickAction('payments');
+              }}
+              className="px-4 py-2 bg-charcoal-800 hover:bg-charcoal-700 text-gold-400 font-bold text-xs rounded-xl border border-gold-500/20 transition-all cursor-pointer flex items-center space-x-1.5"
+            >
+              <span>View Full Ledger</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => openPaymentModal('studio')}
+              className="px-4 py-2 bg-gradient-to-r from-gold-600 to-gold-500 hover:from-gold-500 hover:to-gold-400 text-charcoal-950 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center space-x-2 shadow-lg hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Record Payment</span>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -1751,7 +1704,7 @@ const DashboardView = React.memo(function DashboardView({
                         <div>{entityName}</div>
                         {isIncoming && pay.receivedFrom && (
                           <div className="text-[10px] text-gray-400 font-sans mt-0.5">
-                            Payer: <span className="text-gray-300 font-medium">{pay.receivedFrom === 'KK Sharma' || pay.receivedFrom === 'Wedding By KK' ? 'Satish Tiwari' : pay.receivedFrom}</span>
+                            Payer: <span className="text-gray-300 font-medium">{pay.receivedFrom}</span>
                           </div>
                         )}
                       </td>
@@ -2309,13 +2262,7 @@ const DashboardView = React.memo(function DashboardView({
                           <button
                             onClick={() => {
                               const proj = projects.find(p => p.id === reminder.id);
-                              if (proj && proj.studioId) {
-                                setSelectedStudioId(proj.studioId);
-                                setSelectedProjectId(proj.id);
-                                setPaymentAmount(reminder.amount);
-                              }
-                              setPaymentType('studio');
-                              setIsPaymentModalOpen(true);
+                              openPaymentModal('studio', proj?.studioId || '', proj?.id || '', reminder.amount);
                             }}
                             className="text-[9px] bg-gold-500/10 hover:bg-gold-500/20 text-gold-300 border border-gold-500/30 px-2 py-0.5 rounded font-mono font-bold cursor-pointer"
                           >
@@ -2383,10 +2330,7 @@ const DashboardView = React.memo(function DashboardView({
         {/* Finger-Friendly Quick Actions (Mobile Quick Panel) */}
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => {
-              setPaymentType('studio');
-              setIsPaymentModalOpen(true);
-            }}
+            onClick={() => openPaymentModal('studio')}
             className="p-4 rounded-2xl bg-gradient-to-r from-[#2a6f5e] to-[#1d4e42] border border-gold-500/20 text-gold-300 font-display font-bold text-[11px] tracking-wider uppercase shadow-md flex flex-col items-center justify-center text-center gap-2 active:scale-[0.97] transition-all cursor-pointer h-24 animate-none"
           >
             <IndianRupee className="w-5 h-5 text-gold-300" />
@@ -2504,10 +2448,7 @@ const DashboardView = React.memo(function DashboardView({
               <h2 className="text-sm font-serif italic text-white font-semibold">Latest Transactions</h2>
             </div>
             <button
-              onClick={() => {
-                setPaymentType('studio');
-                setIsPaymentModalOpen(true);
-              }}
+              onClick={() => openPaymentModal('studio')}
               className="text-[10px] text-gold-400 font-mono hover:underline cursor-pointer"
             >
               + Record
@@ -2526,7 +2467,7 @@ const DashboardView = React.memo(function DashboardView({
                     <div className="min-w-0 pr-2">
                       <h4 className="text-xs font-bold text-gray-200 truncate">{name}</h4>
                       {isIncoming && pay.receivedFrom && (
-                        <p className="text-[9px] text-gray-400 font-sans truncate">Payer: {pay.receivedFrom === 'KK Sharma' || pay.receivedFrom === 'Wedding By KK' ? 'Satish Tiwari' : pay.receivedFrom}</p>
+                        <p className="text-[9px] text-gray-400 font-sans truncate">Payer: {pay.receivedFrom}</p>
                       )}
                       <div className="flex items-center space-x-1.5 mt-0.5 text-[9px] text-gray-500 font-mono">
                         <span>{pay.date}</span>
@@ -2938,10 +2879,7 @@ const DashboardView = React.memo(function DashboardView({
                 
                 <div className="flex flex-wrap gap-3">
                   <button
-                    onClick={() => {
-                      setPaymentType('studio');
-                      setIsPaymentModalOpen(true);
-                    }}
+                    onClick={() => openPaymentModal('studio')}
                     className="bg-gradient-to-r from-[#2a6f5e] to-[#1d4e42] border border-gold-500/20 text-gold-300 font-display font-medium text-xs tracking-wider uppercase px-6 py-3.5 rounded-full shadow-lg hover:scale-[1.04] transition-all cursor-pointer inline-flex items-center space-x-2 justify-center gold-glow"
                   >
                     <IndianRupee className="w-4 h-4 text-gold-300" />
@@ -3444,10 +3382,7 @@ const DashboardView = React.memo(function DashboardView({
                   
                   <button
                     id="quick-log-payment"
-                    onClick={() => {
-                      setPaymentType('studio');
-                      setIsPaymentModalOpen(true);
-                    }}
+                    onClick={() => openPaymentModal('studio')}
                     className="flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-gold-600 to-gold-500 border border-gold-400/30 text-charcoal-950 font-bold text-xs hover:scale-[1.03] active:scale-[0.98] transition-transform cursor-pointer shadow-md gold-glow"
                   >
                     <IndianRupee className="w-3.5 h-3.5 text-charcoal-950" />
@@ -3796,30 +3731,6 @@ const DashboardView = React.memo(function DashboardView({
                           </option>
                         ))}
                       </select>
-
-                      {selectedStudioId && (
-                        <div>
-                          <label className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider mb-1">
-                            Specific Wedding Film (Optional)
-                          </label>
-                          <select
-                            value={selectedProjectId}
-                            onChange={(e) => setSelectedProjectId(e.target.value)}
-                            className="w-full bg-charcoal-950/80 border border-white/10 rounded-2xl p-2.5 text-xs text-white focus:outline-none focus:border-gold-500/40 font-medium"
-                          >
-                            <option value="">
-                              -- Auto-Reconcile Across All Outstanding Balances --
-                            </option>
-                            {projects
-                              .filter(p => p.studioId === selectedStudioId)
-                              .map((p) => (
-                                <option key={p.id} value={p.id} className="bg-charcoal-950 text-white">
-                                  {p.coupleName} (Due: ₹{(p.remainingBalance || 0).toLocaleString('en-IN')})
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                      )}
                     </div>
                   ) : (
                     <select

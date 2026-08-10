@@ -1280,10 +1280,27 @@ export default function FinancialOverviewView({
                 setLocalTxList(updatedList);
 
                 // Call Firestore update handlers if provided
-                if (editingTx.type === 'Receipt' && onUpdatePayment) {
-                  try { await onUpdatePayment(editingTx.id, { amount: editingTx.amount, paymentMethod: editingTx.paymentMode }); } catch (err) {}
+                if ((editingTx.id.startsWith('pay-') || editingTx.id.startsWith('pay_')) && onUpdatePayment) {
+                  try { 
+                    await onUpdatePayment(editingTx.id, { 
+                      amount: Number(editingTx.amount), 
+                      paymentMethod: editingTx.paymentMode,
+                      notes: editingTx.notes,
+                      date: editingTx.date
+                    }); 
+                  } catch (err) {}
+                } else if ((editingTx.id.startsWith('exp-') || editingTx.id.startsWith('exp_')) && onUpdateExpense) {
+                  try { 
+                    await onUpdateExpense(editingTx.id, { 
+                      amount: Number(editingTx.amount), 
+                      paymentMethod: editingTx.paymentMode,
+                      date: editingTx.date
+                    }); 
+                  } catch (err) {}
+                } else if (editingTx.type === 'Receipt' && onUpdatePayment) {
+                  try { await onUpdatePayment(editingTx.id, { amount: Number(editingTx.amount), paymentMethod: editingTx.paymentMode }); } catch (err) {}
                 } else if (editingTx.type === 'Payout' && onUpdateExpense) {
-                  try { await onUpdateExpense(editingTx.id, { amount: editingTx.amount, paymentMethod: editingTx.paymentMode }); } catch (err) {}
+                  try { await onUpdateExpense(editingTx.id, { amount: Number(editingTx.amount), paymentMethod: editingTx.paymentMode }); } catch (err) {}
                 }
 
                 setEditingTx(null);
