@@ -209,19 +209,38 @@ export default function InvoiceView({
   // Filter projects for selected studio
   const studioProjects = useMemo(() => {
     if (!selectedStudioId) return [];
-    return projects.filter(p => p.studioId === selectedStudioId);
-  }, [projects, selectedStudioId]);
+    return projects.filter(p => 
+      p.studioId === selectedStudioId || 
+      (currentStudio && p.studioName && p.studioName.trim().toLowerCase() === currentStudio.name.trim().toLowerCase())
+    );
+  }, [projects, selectedStudioId, currentStudio]);
 
   // Project Checkbox Selections state (projectId -> boolean)
   const [selectedProjectIds, setSelectedProjectIds] = useState<Record<string, boolean>>({});
 
-  // Auto-select projects when studio changes
+  // Auto-select projects when studio changes, preserving user selections on data updates
+  const prevStudioIdRef = useRef<string>(selectedStudioId);
   useEffect(() => {
-    const initialSelections: Record<string, boolean> = {};
-    studioProjects.forEach(p => {
-      initialSelections[p.id] = true;
-    });
-    setSelectedProjectIds(initialSelections);
+    if (prevStudioIdRef.current !== selectedStudioId) {
+      prevStudioIdRef.current = selectedStudioId;
+      const initialSelections: Record<string, boolean> = {};
+      studioProjects.forEach(p => {
+        initialSelections[p.id] = true;
+      });
+      setSelectedProjectIds(initialSelections);
+    } else {
+      setSelectedProjectIds(prev => {
+        const updated = { ...prev };
+        let changed = false;
+        studioProjects.forEach(p => {
+          if (updated[p.id] === undefined) {
+            updated[p.id] = true;
+            changed = true;
+          }
+        });
+        return changed ? updated : prev;
+      });
+    }
   }, [selectedStudioId, studioProjects]);
 
   const allProjectsSelected = useMemo(() => {
@@ -252,8 +271,11 @@ export default function InvoiceView({
   // Filter Advance Payments for selected studio
   const studioPayments = useMemo(() => {
     if (!selectedStudioId) return [];
-    return payments.filter(p => p.entityId === selectedStudioId && p.entityType === 'studio');
-  }, [payments, selectedStudioId]);
+    return payments.filter(p => 
+      p.entityType === 'studio' && 
+      (p.entityId === selectedStudioId || (p.projectId && studioProjects.some(sp => sp.id === p.projectId)))
+    );
+  }, [payments, selectedStudioId, studioProjects]);
 
   // Local state for advance payment items (combines existing payments + locally added)
   const [advanceList, setAdvanceList] = useState<Array<{
@@ -269,22 +291,14 @@ export default function InvoiceView({
     const mapped = studioPayments.map(p => ({
       id: p.id,
       date: p.date,
-      paidBy: p.receivedFrom || 'Studio Client',
+      paidBy: p.receivedFrom || currentStudio?.ownerName || currentStudio?.name || 'Studio Client',
       paymentMode: p.paymentMethod || 'UPI',
       amount: p.amount || 0,
       adjusted: true
     }));
 
-    // If no payments found for this studio, provide sample default entries matching wireframe demo
-    if (mapped.length === 0) {
-      setAdvanceList([
-        { id: 'adv-1', date: '2026-07-13', paidBy: 'Krishna', paymentMode: 'Cash', amount: 10000, adjusted: true },
-        { id: 'adv-2', date: '2026-07-17', paidBy: 'Rahul', paymentMode: 'Online (UPI)', amount: 5000, adjusted: true }
-      ]);
-    } else {
-      setAdvanceList(mapped);
-    }
-  }, [studioPayments, selectedStudioId]);
+    setAdvanceList(mapped);
+  }, [studioPayments, currentStudio]);
 
   const handleToggleAdvanceAdjust = (id: string) => {
     setAdvanceList(prev => prev.map(item => item.id === id ? { ...item, adjusted: !item.adjusted } : item));
@@ -364,7 +378,7 @@ export default function InvoiceView({
   }, [advanceList]);
 
   // Invoice Summary calculation inputs
-  const [previousBalance, setPreviousBalance] = useState<number>(12000);
+  const [previousBalance, setPreviousBalance] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
 
   // Total Payable = Project Total + Previous Balance - Advance Adjust - Discount
