@@ -1,580 +1,585 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   HardDrive, 
-  FolderOpen, 
-  Search, 
-  ExternalLink, 
-  CheckCircle, 
-  Clock, 
-  Cloud, 
   Database, 
-  FileCheck2, 
-  Tag, 
+  MapPin, 
+  Cloud, 
+  CheckCircle2, 
+  Clock, 
+  Layers, 
+  BarChart3, 
+  ShieldCheck, 
+  Plus, 
+  Download, 
+  Sparkles, 
   FolderLock,
-  Plus,
-  Edit2,
-  MapPin,
-  X,
-  AlertCircle
+  ArrowRight,
+  AlertTriangle,
+  FolderOpen,
+  RefreshCw,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Project } from '../types';
+import { Project, Studio, Editor, Expense, PaymentHistory } from '../types';
+import StorageDirectoryGrid from './datamanager/StorageDirectoryGrid';
+import HardDiskInventory from './datamanager/HardDiskInventory';
+import StorageAnalytics from './datamanager/StorageAnalytics';
+import SystemBackupHub from './datamanager/SystemBackupHub';
+import StorageEditModal from './datamanager/StorageEditModal';
+import BulkAssignDriveModal from './datamanager/BulkAssignDriveModal';
 
 interface DataManagerViewProps {
   projects: Project[];
+  allProjects?: Project[];
+  studios?: Studio[];
+  editors?: Editor[];
+  expenses?: Expense[];
+  payments?: PaymentHistory[];
   onUpdateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   onDeleteProject?: (id: string) => Promise<void>;
+  onTriggerWeeklyBackup?: () => void;
+  lastWeeklyBackupDate?: Date | null;
+  isWeeklyBackupDue?: boolean;
+  userRole?: string;
 }
 
-export default function DataManagerView({ projects, onUpdateProject }: DataManagerViewProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [backupFilter, setBackupFilter] = useState<'all' | 'pending' | 'backed_up'>('all');
+export default function DataManagerView({
+  projects,
+  allProjects,
+  studios = [],
+  editors = [],
+  expenses = [],
+  payments = [],
+  onUpdateProject,
+  onDeleteProject,
+  onTriggerWeeklyBackup,
+  lastWeeklyBackupDate,
+  isWeeklyBackupDue
+}: DataManagerViewProps) {
+  // Navigation tabs
+  const [activeTab, setActiveTab] = useState<'vault' | 'drives' | 'analytics' | 'backup'>('vault');
 
-  // Modal & Form States
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Modals state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  
-  const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [hardDiskName, setHardDiskName] = useState('');
-  const [dataSize, setDataSize] = useState('');
-  const [location, setLocation] = useState('');
-  const [rawDataFolder, setRawDataFolder] = useState('');
-  const [deliveryFolder, setDeliveryFolder] = useState('');
-  const [finalExportFolder, setFinalExportFolder] = useState('');
-  const [googleDriveLink, setGoogleDriveLink] = useState('');
-  const [backupStatus, setBackupStatus] = useState<'pending' | 'backed_up'>('pending');
+  const [isBulkAssignModalOpen, setIsBulkAssignModalOpen] = useState(false);
 
-  const [saving, setSaving] = useState(false);
+  // Selection state for bulk operations
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
-  // Filter projects for storage view
-  const filteredProjects = projects.filter(p => {
-    const matchesSearch = p.coupleName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (p.hardDiskName && p.hardDiskName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                          (p.location && p.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                          (p.id.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesBackup = backupFilter === 'all' || 
-                          (backupFilter === 'backed_up' && p.backupStatus === 'backed_up') || 
-                          (backupFilter === 'pending' && (!p.backupStatus || p.backupStatus === 'pending'));
+  // CSV Export state
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState(false);
 
-    return matchesSearch && matchesBackup;
-  });
+  // Toast feedback
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const totalBackupCompleted = projects.filter(p => p.backupStatus === 'backed_up').length;
-  const totalStorageCapacityNum = projects.reduce((sum, p) => {
-    // Parse size e.g. "1.5 TB" to TB
-    const sizeStr = p.dataSize || '';
-    const num = parseFloat(sizeStr);
-    if (isNaN(num)) return sum;
-    if (sizeStr.toLowerCase().includes('gb')) return sum + (num / 1024);
-    return sum + num;
-  }, 0);
-
-  const toggleBackup = async (proj: Project) => {
-    const current = proj.backupStatus || 'pending';
-    const nextStatus = current === 'pending' ? 'backed_up' : 'pending';
-    await onUpdateProject(proj.id, { backupStatus: nextStatus });
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3000);
   };
 
+  // Helper to parse size to GB
+  const parseSizeInGb = (sizeStr?: string): number => {
+    if (!sizeStr) return 0;
+    const num = parseFloat(sizeStr);
+    if (isNaN(num)) return 0;
+    if (sizeStr.toLowerCase().includes('tb')) return num * 1024;
+    return num;
+  };
+
+  // Master KPI computations
+  const totalProjectsCount = projects.length;
+  const totalSizeGb = projects.reduce((sum, p) => sum + parseSizeInGb(p.dataSize), 0);
+  const totalSizeTb = (totalSizeGb / 1024).toFixed(2);
+
+  const backedUpCount = projects.filter(p => p.backupStatus === 'backed_up').length;
+  const pendingCount = totalProjectsCount - backedUpCount;
+  const backupPercent = totalProjectsCount > 0 ? Math.round((backedUpCount / totalProjectsCount) * 100) : 0;
+
+  const existingDrives = useMemo(() => {
+    const set = new Set<string>();
+    projects.forEach(p => {
+      if (p.hardDiskName && p.hardDiskName.trim()) {
+        set.add(p.hardDiskName.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [projects]);
+
+  const existingLocations = useMemo(() => {
+    const set = new Set<string>();
+    projects.forEach(p => {
+      if (p.location && p.location.trim()) {
+        set.add(p.location.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [projects]);
+
+  // Handle single selection toggle
+  const handleToggleSelect = (id: string) => {
+    setSelectedProjectIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // Select all filtered (or visible)
+  const handleSelectAllFiltered = () => {
+    if (selectedProjectIds.length === projects.length) {
+      setSelectedProjectIds([]);
+    } else {
+      setSelectedProjectIds(projects.map(p => p.id));
+    }
+  };
+
+  const handleSelectAllProjects = () => {
+    if (selectedProjectIds.length === projects.length) {
+      setSelectedProjectIds([]);
+    } else {
+      setSelectedProjectIds(projects.map(p => p.id));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedProjectIds([]);
+  };
+
+  // Modal Openers
   const handleOpenAddModal = () => {
     setEditingProject(null);
-    setSelectedProjectId('');
-    setHardDiskName('');
-    setDataSize('');
-    setLocation('');
-    setRawDataFolder('');
-    setDeliveryFolder('');
-    setFinalExportFolder('');
-    setGoogleDriveLink('');
-    setBackupStatus('pending');
-    setIsModalOpen(true);
+    setIsEditModalOpen(true);
   };
 
   const handleOpenEditModal = (proj: Project) => {
     setEditingProject(proj);
-    setSelectedProjectId(proj.id);
-    setHardDiskName(proj.hardDiskName || '');
-    setDataSize(proj.dataSize || '');
-    setLocation(proj.location || '');
-    setRawDataFolder(proj.rawDataFolder || '');
-    setDeliveryFolder(proj.deliveryFolder || '');
-    setFinalExportFolder(proj.finalExportFolder || '');
-    setGoogleDriveLink(proj.googleDriveLink || '');
-    setBackupStatus(proj.backupStatus || 'pending');
-    setIsModalOpen(true);
+    setIsEditModalOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const projId = editingProject ? editingProject.id : selectedProjectId;
-    if (!projId) {
-      alert('Please select a project');
-      return;
-    }
-
-    setSaving(true);
+  // Single project backup toggle
+  const handleToggleBackup = async (project: Project) => {
+    const newStatus = project.backupStatus === 'backed_up' ? 'pending' : 'backed_up';
     try {
-      const updates: Partial<Project> = {
-        hardDiskName,
-        dataSize,
-        location,
-        rawDataFolder,
-        deliveryFolder,
-        finalExportFolder,
-        googleDriveLink,
-        backupStatus,
-      };
-      await onUpdateProject(projId, updates);
-      setIsModalOpen(false);
+      await onUpdateProject(project.id, { backupStatus: newStatus });
+      showToast(`${project.coupleName} marked as ${newStatus === 'backed_up' ? 'Backed Up' : 'Backup Pending'}`);
     } catch (err) {
-      console.error('Error updating storage data:', err);
-    } finally {
-      setSaving(false);
+      console.error('Failed to toggle backup status:', err);
+      alert('Failed to update backup status.');
     }
   };
+
+  // Bulk backup update
+  const handleBulkUpdateBackupStatus = async (status: 'backed_up' | 'pending') => {
+    if (selectedProjectIds.length === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      for (const id of selectedProjectIds) {
+        await onUpdateProject(id, { backupStatus: status });
+      }
+      showToast(`${selectedProjectIds.length} projects updated to ${status === 'backed_up' ? 'Backed Up' : 'Backup Pending'}`);
+      setSelectedProjectIds([]);
+    } catch (err) {
+      console.error('Bulk update error:', err);
+      alert('Failed to complete bulk backup update.');
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  // Bulk assign drive & location
+  const handleBulkAssignDrive = async (updates: {
+    hardDiskName?: string;
+    location?: string;
+    backupStatus?: 'pending' | 'backed_up';
+  }) => {
+    if (selectedProjectIds.length === 0) return;
+    for (const id of selectedProjectIds) {
+      await onUpdateProject(id, updates);
+    }
+    showToast(`Storage metadata applied to ${selectedProjectIds.length} projects`);
+    setSelectedProjectIds([]);
+  };
+
+  // Export Comprehensive CSV
+  const handleExportCsv = (scope: 'selected' | 'filtered' | 'all') => {
+    setIsExporting(true);
+
+    let targetProjects = projects;
+    if (scope === 'selected' && selectedProjectIds.length > 0) {
+      targetProjects = projects.filter(p => selectedProjectIds.includes(p.id));
+    }
+
+    try {
+      const headers = [
+        'Project ID',
+        'Couple Name',
+        'Studio Name',
+        'Event Type',
+        'Shoot Date',
+        'Delivery Date',
+        'Hard Disk Code',
+        'Footage Size',
+        'Storage Location',
+        'Backup Status',
+        'Google Drive Link',
+        'Raw Footage Path',
+        'Delivery Master Path',
+        'Final Export Path',
+        'Project Amount (INR)',
+        'Editor Share (INR)',
+        'Status'
+      ];
+
+      const rows = targetProjects.map(p => [
+        `"${p.id}"`,
+        `"${p.coupleName}"`,
+        `"${p.studioName || 'Direct Client'}"`,
+        `"${p.eventType}"`,
+        `"${p.shootDate || ''}"`,
+        `"${p.deliveryDate || ''}"`,
+        `"${p.hardDiskName || 'Unassigned'}"`,
+        `"${p.dataSize || 'Unmeasured'}"`,
+        `"${p.location || 'Not Specified'}"`,
+        `"${p.backupStatus === 'backed_up' ? 'BACKED UP' : 'PENDING'}"`,
+        `"${p.googleDriveLink || ''}"`,
+        `"${p.rawDataFolder || ''}"`,
+        `"${p.deliveryFolder || ''}"`,
+        `"${p.finalExportFolder || ''}"`,
+        p.projectAmount || 0,
+        p.editorPayment || 0,
+        `"${p.status}"`
+      ]);
+
+      // Summary calculations
+      const totalAmt = targetProjects.reduce((sum, p) => sum + (p.projectAmount || 0), 0);
+      const totalEditorAmt = targetProjects.reduce((sum, p) => sum + (p.editorPayment || 0), 0);
+      const totalGb = targetProjects.reduce((sum, p) => sum + parseSizeInGb(p.dataSize), 0);
+      const totalTb = (totalGb / 1024).toFixed(2);
+
+      const summaryRow = [
+        `"TOTAL (${targetProjects.length} Projects)"`,
+        '""',
+        '""',
+        '""',
+        '""',
+        '""',
+        '""',
+        `"${totalTb} TB Total"`,
+        '""',
+        `"${targetProjects.filter(p => p.backupStatus === 'backed_up').length} Backed Up"`,
+        '""',
+        '""',
+        '""',
+        '""',
+        totalAmt,
+        totalEditorAmt,
+        '""'
+      ];
+
+      const csvContent = [
+        '# FRAME CUT STUDIO OS - STORAGE & HARD DISK MASTER REGISTRY',
+        `# Generated At: ${new Date().toLocaleString('en-IN')}`,
+        `# Scope: ${targetProjects.length} Wedding Film Records`,
+        '',
+        headers.join(','),
+        ...rows.map(r => r.join(',')),
+        '',
+        summaryRow.join(',')
+      ].join('\r\n');
+
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `TFC_Storage_Registry_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      setExportSuccess(true);
+      showToast('Storage registry CSV exported successfully!');
+      setTimeout(() => setExportSuccess(false), 3000);
+    } catch (err) {
+      console.error('Export CSV error:', err);
+      alert('Failed to export CSV.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const selectedProjects = projects.filter(p => selectedProjectIds.includes(p.id));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-16">
       
-      {/* Metrics overview bar */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="p-5 rounded-2xl bg-charcoal-900 border border-luxury-green-800/25 flex items-center justify-between">
-          <div>
-            <span className="text-gray-500 text-[10px] font-mono block">AGGREGATE STORAGE SIZE</span>
-            <span className="text-xl font-bold font-display text-white mt-1 block">
-              {totalStorageCapacityNum.toFixed(2)} Terabytes
-            </span>
-          </div>
-          <div className="p-3 bg-luxury-green-850 rounded-xl">
-            <Database className="w-5 h-5 text-gold-400" />
-          </div>
-        </div>
+      {/* ===================== LUXURY TOP HERO & MASTER STATS HEADER ===================== */}
+      <div className="relative rounded-3xl overflow-hidden glass-panel border border-luxury-green-800/30 bg-gradient-to-r from-charcoal-950 via-charcoal-900 to-charcoal-950 p-6 md:p-8 shadow-2xl space-y-6">
+        
+        {/* Background ambient lighting */}
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-gold-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="p-5 rounded-2xl bg-charcoal-900 border border-luxury-green-800/25 flex items-center justify-between">
-          <div>
-            <span className="text-gray-500 text-[10px] font-mono block">BACKUP SYNC MILESTONES</span>
-            <span className="text-xl font-bold font-display text-white mt-1 block">
-              {totalBackupCompleted} / {projects.length} Wed Films
-            </span>
-          </div>
-          <div className="p-3 bg-emerald-950/20 rounded-xl">
-            <FileCheck2 className="w-5 h-5 text-emerald-400" />
-          </div>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-charcoal-900 border border-luxury-green-800/25 flex items-center justify-between">
-          <div>
-            <span className="text-gray-500 text-[10px] font-mono block">OFFLINE HDDS ENGAGED</span>
-            <span className="text-xl font-bold font-display text-white mt-1 block">
-              {Array.from(new Set(projects.map(p => p.hardDiskName).filter(Boolean))).length} Physical Disks
-            </span>
-          </div>
-          <div className="p-3 bg-blue-950/20 rounded-xl">
-            <HardDrive className="w-5 h-5 text-blue-400" />
-          </div>
-        </div>
-      </div>
-
-      {/* Filter and Search */}
-      <div className="p-6 rounded-3xl glass-panel relative">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex-1 relative w-full">
-            <Search className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search storage indexes by Couple, HDD, Location, or ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-charcoal-900 border border-luxury-green-800/30 rounded-2xl text-sm focus:outline-none focus:border-gold-500/40 text-gray-200 transition-colors"
-            />
+        {/* Header Title Bar */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-1.5">
+            <div className="flex items-center space-x-3">
+              <div className="p-3 bg-gradient-to-br from-luxury-green-800 to-luxury-green-900 border border-gold-500/40 rounded-2xl shadow-lg shadow-gold-500/10">
+                <HardDrive className="w-7 h-7 text-gold-400" />
+              </div>
+              <div>
+                <span className="text-[10px] font-mono text-gold-400 uppercase tracking-widest font-bold block">
+                  Studio Post-Production Storage OS
+                </span>
+                <h1 className="text-2xl md:text-3xl font-bold font-display text-white">
+                  Data Manager & Storage Vault
+                </h1>
+              </div>
+            </div>
+            <p className="text-xs text-gray-300 max-w-2xl font-light">
+              Live physical hard disk inventory, raw footage indexing, Google Drive cloud integration, and disaster recovery data protection.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <select
-              value={backupFilter}
-              onChange={(e) => setBackupFilter(e.target.value as any)}
-              className="bg-charcoal-900 border border-luxury-green-800/30 px-3.5 py-2.5 rounded-2xl text-xs text-gray-300 focus:outline-none shrink-0 flex-1 sm:flex-none"
-            >
-              <option value="all">All Backups</option>
-              <option value="pending">Backup Pending</option>
-              <option value="backed_up">Backed Up</option>
-            </select>
-
+          {/* Quick Action Buttons */}
+          <div className="flex items-center space-x-3">
+            {/* 1-Click Export CSV */}
             <button
-              id="add-data-btn"
+              onClick={() => handleExportCsv('all')}
+              disabled={isExporting}
+              className="flex items-center space-x-2 px-4 py-2.5 bg-charcoal-950 hover:bg-charcoal-800 border border-gold-500/30 hover:border-gold-500/60 text-gold-400 font-mono text-xs rounded-2xl shadow-md transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export Master CSV</span>
+            </button>
+
+            {/* Add Storage Log */}
+            <button
               onClick={handleOpenAddModal}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-gold-600 to-gold-500 hover:from-gold-500 hover:to-gold-400 text-charcoal-950 font-bold font-sans text-xs rounded-2xl shadow-lg shadow-gold-500/10 transition-all shrink-0 cursor-pointer"
+              className="flex items-center space-x-2 px-5 py-2.5 bg-gradient-to-r from-gold-600 to-gold-500 hover:from-gold-500 hover:to-gold-400 text-charcoal-950 font-bold text-xs rounded-2xl shadow-xl shadow-gold-500/20 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Storage Data</span>
+              <span>Add Storage Log</span>
             </button>
           </div>
         </div>
+
+        {/* Master High-Tech KPI Ribbon */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-luxury-green-800/20 relative z-10">
+          
+          {/* Storage Volume */}
+          <div className="p-4 rounded-2xl bg-charcoal-950/70 border border-luxury-green-800/20 flex items-center space-x-3">
+            <div className="p-2.5 bg-charcoal-900 border border-luxury-green-800/30 rounded-xl text-gold-400 shrink-0">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] font-mono text-gray-400 uppercase block">Active Storage</span>
+              <div className="flex items-baseline space-x-1 mt-0.5">
+                <span className="text-xl font-bold font-mono text-white">{totalSizeTb}</span>
+                <span className="text-xs font-mono text-gold-400">TB</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Backup Redundancy Gauge */}
+          <div className="p-4 rounded-2xl bg-charcoal-950/70 border border-luxury-green-800/20 flex items-center space-x-3">
+            <div className="p-2.5 bg-charcoal-900 border border-luxury-green-800/30 rounded-xl text-emerald-400 shrink-0">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] font-mono text-gray-400 uppercase block">Backup Health</span>
+              <div className="flex items-baseline space-x-1 mt-0.5">
+                <span className="text-xl font-bold font-mono text-emerald-400">{backupPercent}%</span>
+                <span className="text-[10px] font-mono text-gray-400">({backedUpCount}/{totalProjectsCount})</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Physical Hard Disks */}
+          <div className="p-4 rounded-2xl bg-charcoal-950/70 border border-luxury-green-800/20 flex items-center space-x-3">
+            <div className="p-2.5 bg-charcoal-900 border border-luxury-green-800/30 rounded-xl text-blue-400 shrink-0">
+              <HardDrive className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] font-mono text-gray-400 uppercase block">Hardware HDDs</span>
+              <div className="flex items-baseline space-x-1 mt-0.5">
+                <span className="text-xl font-bold font-mono text-white">{existingDrives.length}</span>
+                <span className="text-xs font-mono text-gray-400">Units</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Cloud Workspace Connections */}
+          <div className="p-4 rounded-2xl bg-charcoal-950/70 border border-luxury-green-800/20 flex items-center space-x-3">
+            <div className="p-2.5 bg-charcoal-900 border border-luxury-green-800/30 rounded-xl text-purple-400 shrink-0">
+              <Cloud className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] font-mono text-gray-400 uppercase block">Cloud Workspaces</span>
+              <div className="flex items-baseline space-x-1 mt-0.5">
+                <span className="text-xl font-bold font-mono text-purple-400">
+                  {projects.filter(p => !!p.googleDriveLink && p.googleDriveLink.trim()).length}
+                </span>
+                <span className="text-xs font-mono text-gray-400">Linked</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
 
-      {/* Storage Folder list */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {filteredProjects.map((p) => {
-          return (
-            <motion.div
-              key={p.id}
-              layout
-              className="p-6 rounded-3xl glass-panel space-y-4 relative"
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="text-[10px] font-mono text-gold-400">{p.id}</span>
-                  <h4 className="text-base font-bold text-white font-display mt-0.5">{p.coupleName}</h4>
-                  <p className="text-[11px] text-gray-400 mt-0.5">{p.eventType}</p>
-                </div>
+      {/* ===================== SUB-TAB NAVIGATION PILLS ===================== */}
+      <div className="flex items-center gap-2 border-b border-luxury-green-800/20 pb-4 overflow-x-auto custom-scrollbar">
+        
+        {/* Tab 1: Storage & HDD Vault */}
+        <button
+          onClick={() => setActiveTab('vault')}
+          className={`flex items-center space-x-2 px-5 py-3 rounded-2xl text-xs font-mono font-bold transition-all cursor-pointer shrink-0 border ${
+            activeTab === 'vault'
+              ? 'bg-gradient-to-r from-luxury-green-800 to-luxury-green-700 border-gold-500/50 text-gold-300 shadow-lg shadow-gold-500/10'
+              : 'bg-charcoal-900/60 border-white/5 text-gray-400 hover:text-white hover:bg-charcoal-800/80'
+          }`}
+        >
+          <FolderLock className="w-4 h-4 text-gold-400" />
+          <span>Storage & HDD Directory</span>
+          <span className="px-2 py-0.5 rounded-full bg-black/40 text-[10px]">{projects.length}</span>
+        </button>
 
-                <div className="flex items-center space-x-2">
-                  {/* Edit button */}
-                  <button
-                    id={`edit-storage-btn-${p.id}`}
-                    onClick={() => handleOpenEditModal(p)}
-                    className="p-1.5 rounded-xl bg-charcoal-800/80 border border-white/10 hover:border-gold-500/30 hover:bg-charcoal-700 text-gray-400 hover:text-gold-400 transition-colors cursor-pointer"
-                    title="Edit Storage Details"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
+        {/* Tab 2: Physical Hard Disk Inventory */}
+        <button
+          onClick={() => setActiveTab('drives')}
+          className={`flex items-center space-x-2 px-5 py-3 rounded-2xl text-xs font-mono font-bold transition-all cursor-pointer shrink-0 border ${
+            activeTab === 'drives'
+              ? 'bg-gradient-to-r from-luxury-green-800 to-luxury-green-700 border-gold-500/50 text-gold-300 shadow-lg shadow-gold-500/10'
+              : 'bg-charcoal-900/60 border-white/5 text-gray-400 hover:text-white hover:bg-charcoal-800/80'
+          }`}
+        >
+          <HardDrive className="w-4 h-4 text-gold-400" />
+          <span>Physical HDD Inventory</span>
+          <span className="px-2 py-0.5 rounded-full bg-black/40 text-[10px]">{existingDrives.length}</span>
+        </button>
 
-                  <button
-                    id={`backup-btn-${p.id}`}
-                    onClick={() => toggleBackup(p)}
-                    className={`px-3 py-1.5 rounded-xl font-mono text-[10px] border flex items-center space-x-1.5 transition-colors cursor-pointer ${
-                      p.backupStatus === 'backed_up' 
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' 
-                        : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/20'
-                    }`}
-                  >
-                    {p.backupStatus === 'backed_up' ? (
-                      <>
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        <span>Backed Up</span>
-                      </>
-                    ) : (
-                      <>
-                        <Clock className="w-3.5 h-3.5 animate-pulse" />
-                        <span>Backup Pending</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+        {/* Tab 3: Storage Analytics */}
+        <button
+          onClick={() => setActiveTab('analytics')}
+          className={`flex items-center space-x-2 px-5 py-3 rounded-2xl text-xs font-mono font-bold transition-all cursor-pointer shrink-0 border ${
+            activeTab === 'analytics'
+              ? 'bg-gradient-to-r from-luxury-green-800 to-luxury-green-700 border-gold-500/50 text-gold-300 shadow-lg shadow-gold-500/10'
+              : 'bg-charcoal-900/60 border-white/5 text-gray-400 hover:text-white hover:bg-charcoal-800/80'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 text-gold-400" />
+          <span>Storage Analytics</span>
+        </button>
 
-              {/* Data specifications grids with location included */}
-              <div className="grid grid-cols-3 gap-4 text-xs font-mono border-t border-luxury-green-800/10 pt-4">
-                <div>
-                  <span className="text-gray-500 block">HARD DISK LOG</span>
-                  <span className="text-white font-sans font-bold mt-1 block truncate" title={p.hardDiskName || 'Unlogged HDD'}>
-                    {p.hardDiskName || 'Unlogged HDD'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">FOOTAGE SIZE</span>
-                  <span className="text-white font-sans font-bold mt-1 block truncate" title={p.dataSize || 'Unmeasured size'}>
-                    {p.dataSize || 'Unmeasured size'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-gold-400" /> LOCATION
-                  </span>
-                  <span className="text-white font-sans font-bold mt-1 block truncate" title={p.location || 'Not Specified'}>
-                    {p.location || 'Not Specified'}
-                  </span>
-                </div>
-              </div>
+        {/* Tab 4: System Backup & Disaster Recovery */}
+        <button
+          onClick={() => setActiveTab('backup')}
+          className={`flex items-center space-x-2 px-5 py-3 rounded-2xl text-xs font-mono font-bold transition-all cursor-pointer shrink-0 border ${
+            activeTab === 'backup'
+              ? 'bg-gradient-to-r from-luxury-green-800 to-luxury-green-700 border-gold-500/50 text-gold-300 shadow-lg shadow-gold-500/10'
+              : 'bg-charcoal-900/60 border-white/5 text-gray-400 hover:text-white hover:bg-charcoal-800/80'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-gold-400" />
+          <span>System Backup & Recovery</span>
+          {isWeeklyBackupDue && (
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+          )}
+        </button>
 
-              {/* Directory paths list */}
-              <div className="space-y-2 text-xs">
-                {p.rawDataFolder && (
-                  <div className="p-2.5 bg-charcoal-950/50 rounded-xl border border-luxury-green-800/10 flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-gray-500 uppercase">RAW STORAGE</span>
-                    <span className="font-mono text-gray-300 text-[11px] truncate pr-4">{p.rawDataFolder}</span>
-                  </div>
-                )}
+      </div>
 
-                {p.deliveryFolder && (
-                  <div className="p-2.5 bg-charcoal-950/50 rounded-xl border border-luxury-green-800/10 flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-gray-500 uppercase">DELIVERY FOLDER</span>
-                    <span className="font-mono text-gray-300 text-[11px] truncate pr-4">{p.deliveryFolder}</span>
-                  </div>
-                )}
+      {/* ===================== TAB CONTENT PANELS ===================== */}
+      <div>
+        {activeTab === 'vault' && (
+          <StorageDirectoryGrid
+            projects={projects}
+            selectedProjectIds={selectedProjectIds}
+            onToggleSelect={handleToggleSelect}
+            onSelectAllFiltered={handleSelectAllFiltered}
+            onSelectAllProjects={handleSelectAllProjects}
+            onClearSelection={handleClearSelection}
+            onOpenAddModal={handleOpenAddModal}
+            onOpenEditModal={handleOpenEditModal}
+            onToggleBackup={handleToggleBackup}
+            onBulkUpdateBackupStatus={handleBulkUpdateBackupStatus}
+            onOpenBulkAssignModal={() => setIsBulkAssignModalOpen(true)}
+            onExportCsv={handleExportCsv}
+            isExporting={isExporting}
+            exportSuccess={exportSuccess}
+            isBulkUpdating={isBulkUpdating}
+          />
+        )}
 
-                {p.finalExportFolder && (
-                  <div className="p-2.5 bg-charcoal-950/50 rounded-xl border border-luxury-green-800/10 flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-gray-500 uppercase">FINAL EXPORT</span>
-                    <span className="font-mono text-gray-300 text-[11px] truncate pr-4">{p.finalExportFolder}</span>
-                  </div>
-                )}
-              </div>
+        {activeTab === 'drives' && (
+          <HardDiskInventory
+            projects={projects}
+            onOpenEditModal={handleOpenEditModal}
+            onToggleBackup={handleToggleBackup}
+            onOpenBulkAssignModal={() => setIsBulkAssignModalOpen(true)}
+          />
+        )}
 
-              {p.googleDriveLink && (
-                <a
-                  href={p.googleDriveLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-between p-3 bg-charcoal-950 hover:bg-black rounded-2xl text-xs text-gold-400 border border-luxury-green-800/20"
-                >
-                  <span className="truncate font-mono">Google Drive Workspace Path</span>
-                  <ExternalLink className="w-4 h-4 shrink-0" />
-                </a>
-              )}
-            </motion.div>
-          );
-        })}
+        {activeTab === 'analytics' && (
+          <StorageAnalytics projects={projects} />
+        )}
 
-        {filteredProjects.length === 0 && (
-          <div className="col-span-2 text-center py-20 text-gray-500 text-sm font-mono">No storage directories match the search framework.</div>
+        {activeTab === 'backup' && (
+          <SystemBackupHub
+            projects={projects}
+            studios={studios}
+            editors={editors}
+            expenses={expenses}
+            payments={payments}
+            onTriggerSystemBackup={onTriggerWeeklyBackup}
+            lastBackupDate={lastWeeklyBackupDate}
+            isBackupDue={isWeeklyBackupDue}
+            onOpenEditModal={handleOpenEditModal}
+          />
         )}
       </div>
 
-      {/* Add/Edit Modal */}
+      {/* ===================== STORAGE EDIT MODAL ===================== */}
+      <StorageEditModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingProject(null);
+        }}
+        project={editingProject}
+        projects={projects}
+        existingDrives={existingDrives}
+        existingLocations={existingLocations}
+        onSave={async (projectId, updates) => {
+          await onUpdateProject(projectId, updates);
+          showToast('Storage specifications saved successfully!');
+        }}
+      />
+
+      {/* ===================== BULK ASSIGN DRIVE MODAL ===================== */}
+      <BulkAssignDriveModal
+        isOpen={isBulkAssignModalOpen}
+        onClose={() => setIsBulkAssignModalOpen(false)}
+        selectedProjects={selectedProjects.length > 0 ? selectedProjects : projects}
+        existingDrives={existingDrives}
+        existingLocations={existingLocations}
+        onAssign={handleBulkAssignDrive}
+      />
+
+      {/* ===================== TOAST NOTIFICATION ===================== */}
       <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            />
-
-            {/* Modal Body */}
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="relative w-full max-w-2xl bg-charcoal-900 border border-white/10 rounded-3xl p-6 md:p-8 overflow-y-auto max-h-[90vh] shadow-2xl space-y-6"
-            >
-              <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                <div>
-                  <h3 className="text-xl font-bold font-serif text-white">
-                    {editingProject ? 'Edit Storage Data' : 'Add Storage Data'}
-                  </h3>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {editingProject 
-                      ? `Updating storage logs for ${editingProject.coupleName} (${editingProject.id})`
-                      : 'Configure storage locations, physical HDDs, and backup states'
-                    }
-                  </p>
-                </div>
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="p-2 rounded-xl bg-charcoal-800/80 border border-white/5 hover:border-white/10 hover:bg-charcoal-700 text-gray-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-5">
-                {/* 1. Select Project (Only on Add) */}
-                {!editingProject ? (
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider mb-2">
-                      Select Project *
-                    </label>
-                    <select
-                      value={selectedProjectId}
-                      onChange={(e) => {
-                        setSelectedProjectId(e.target.value);
-                        // Prepopulate if project already has some fields
-                        const found = projects.find(p => p.id === e.target.value);
-                        if (found) {
-                          setHardDiskName(found.hardDiskName || '');
-                          setDataSize(found.dataSize || '');
-                          setLocation(found.location || '');
-                          setRawDataFolder(found.rawDataFolder || '');
-                          setDeliveryFolder(found.deliveryFolder || '');
-                          setFinalExportFolder(found.finalExportFolder || '');
-                          setGoogleDriveLink(found.googleDriveLink || '');
-                          setBackupStatus(found.backupStatus || 'pending');
-                        }
-                      }}
-                      required
-                      className="w-full bg-charcoal-950 border border-white/10 rounded-2xl p-3 text-sm text-white focus:outline-none focus:border-gold-500/40 font-medium"
-                    >
-                      <option value="" disabled>-- Choose Wedding Film Project --</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id} className="bg-charcoal-950 text-white">
-                          [{p.id}] {p.coupleName} ({p.eventType})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div>
-                    <span className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider mb-1">
-                      Target Project
-                    </span>
-                    <div className="p-3 bg-charcoal-950 border border-white/5 rounded-2xl font-medium text-sm text-gray-300">
-                      [{editingProject.id}] {editingProject.coupleName} ({editingProject.eventType})
-                    </div>
-                  </div>
-                )}
-
-                {/* 2. Grid for HDD, Size, Location */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider mb-2">
-                      Hard Disk Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. HDD-02 or SEAGATE-4T"
-                      value={hardDiskName}
-                      onChange={(e) => setHardDiskName(e.target.value)}
-                      className="w-full bg-charcoal-950 border border-white/10 rounded-2xl p-3 text-sm text-white focus:outline-none focus:border-gold-500/40 font-medium placeholder-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider mb-2">
-                      Footage Size
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 1.2 TB or 450 GB"
-                      value={dataSize}
-                      onChange={(e) => setDataSize(e.target.value)}
-                      className="w-full bg-charcoal-950 border border-white/10 rounded-2xl p-3 text-sm text-white focus:outline-none focus:border-gold-500/40 font-medium placeholder-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-                      <MapPin className="w-3 h-3 text-gold-400" /> Physical Location
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Shelf A-3, Mumbai Office"
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
-                      className="w-full bg-charcoal-950 border border-white/10 rounded-2xl p-3 text-sm text-white focus:outline-none focus:border-gold-500/40 font-medium placeholder-gray-600"
-                    />
-                  </div>
-                </div>
-
-                {/* 3. Folder paths */}
-                <div className="space-y-4 border-t border-white/5 pt-4">
-                  <span className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider">
-                    Internal Storage Folder Paths
-                  </span>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-mono text-gray-500 uppercase tracking-wider mb-1.5">
-                        Raw Footage Path
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. D:/Raw/ProjectName"
-                        value={rawDataFolder}
-                        onChange={(e) => setRawDataFolder(e.target.value)}
-                        className="w-full bg-charcoal-950 border border-white/10 rounded-2xl p-3 text-xs text-white focus:outline-none focus:border-gold-500/40 font-mono placeholder-gray-600"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-mono text-gray-500 uppercase tracking-wider mb-1.5">
-                        Delivery Folder Path
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. E:/Delivery/ProjectName"
-                        value={deliveryFolder}
-                        onChange={(e) => setDeliveryFolder(e.target.value)}
-                        className="w-full bg-charcoal-950 border border-white/10 rounded-2xl p-3 text-xs text-white focus:outline-none focus:border-gold-500/40 font-mono placeholder-gray-600"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-mono text-gray-500 uppercase tracking-wider mb-1.5">
-                        Final Export Path
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. F:/Exports/ProjectName"
-                        value={finalExportFolder}
-                        onChange={(e) => setFinalExportFolder(e.target.value)}
-                        className="w-full bg-charcoal-950 border border-white/10 rounded-2xl p-3 text-xs text-white focus:outline-none focus:border-gold-500/40 font-mono placeholder-gray-600"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. Google Drive Link */}
-                <div>
-                  <label className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider mb-2">
-                    Google Drive Workspace Link
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="https://drive.google.com/drive/folders/..."
-                    value={googleDriveLink}
-                    onChange={(e) => setGoogleDriveLink(e.target.value)}
-                    className="w-full bg-charcoal-950 border border-white/10 rounded-2xl p-3 text-sm text-white focus:outline-none focus:border-gold-500/40 font-medium placeholder-gray-600"
-                  />
-                </div>
-
-                {/* 5. Backup Status Selector */}
-                <div>
-                  <label className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider mb-2.5">
-                    Backup State
-                  </label>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setBackupStatus('pending')}
-                      className={`p-3.5 rounded-2xl border text-xs font-mono font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
-                        backupStatus === 'pending'
-                          ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-500 shadow-md shadow-yellow-500/5'
-                          : 'bg-charcoal-950 border-white/5 text-gray-500 hover:text-gray-300'
-                      }`}
-                    >
-                      <Clock className="w-4 h-4 animate-pulse" />
-                      <span>Backup Pending</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setBackupStatus('backed_up')}
-                      className={`p-3.5 rounded-2xl border text-xs font-mono font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
-                        backupStatus === 'backed_up'
-                          ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400 shadow-md shadow-emerald-500/5'
-                          : 'bg-charcoal-950 border-white/5 text-gray-500 hover:text-gray-300'
-                      }`}
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Backed Up</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Footer Buttons */}
-                <div className="flex justify-end items-center gap-3 border-t border-white/5 pt-5 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-5 py-2.5 bg-charcoal-800 hover:bg-charcoal-750 text-gray-300 hover:text-white font-medium text-xs rounded-2xl border border-white/5 transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="px-6 py-2.5 bg-gradient-to-r from-gold-600 to-gold-500 hover:from-gold-500 hover:to-gold-400 disabled:opacity-50 text-charcoal-950 font-bold text-xs rounded-2xl shadow-lg shadow-gold-500/10 transition-all cursor-pointer"
-                  >
-                    {saving ? 'Saving Logs...' : 'Save Storage Log'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl bg-charcoal-900/95 border border-gold-500/40 text-gold-300 font-mono text-xs shadow-2xl flex items-center space-x-2 backdrop-blur-md"
+          >
+            <Sparkles className="w-4 h-4 text-gold-400" />
+            <span>{toastMessage}</span>
+          </motion.div>
         )}
       </AnimatePresence>
 

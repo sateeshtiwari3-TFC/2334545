@@ -17,6 +17,9 @@ interface SwipeableCardProps {
   children: React.ReactNode;
   className?: string;
   containerClassName?: string;
+  layout?: boolean | 'position' | 'size';
+  layoutId?: string;
+  transition?: any;
 }
 
 export default function SwipeableCard({
@@ -32,7 +35,10 @@ export default function SwipeableCard({
   rightColor = "text-red-400",
   children,
   className = "",
-  containerClassName = ""
+  containerClassName = "",
+  layout,
+  layoutId,
+  transition
 }: SwipeableCardProps) {
   const [dragProgress, setDragProgress] = useState(0); // -1 to 1 representing left/right swipe progress
   const [isTouch, setIsTouch] = useState(false);
@@ -44,7 +50,15 @@ export default function SwipeableCard({
   const swipeThreshold = 130;
 
   return (
-    <div className={`relative overflow-hidden rounded-3xl ${containerClassName}`}>
+    <motion.div
+      layout={layout}
+      layoutId={layoutId}
+      transition={transition || {
+        layout: { type: 'spring', stiffness: 350, damping: 30 },
+        opacity: { duration: 0.2 }
+      }}
+      className={`relative overflow-hidden rounded-3xl ${containerClassName}`}
+    >
       {/* Background Actions Layer (revealed on drag) */}
       <div className="absolute inset-0 z-0 flex items-center justify-between px-6 rounded-3xl select-none pointer-events-none">
         
@@ -106,6 +120,6 @@ export default function SwipeableCard({
       >
         {children}
       </motion.div>
-    </div>
+    </motion.div>
   );
 }

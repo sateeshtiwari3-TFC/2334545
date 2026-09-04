@@ -4,6 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>The Frame Cut Studio</title>
+    <script>
+      (function() {
+        function isBenign(str) {
+          if (!str) return false;
+          var s = String(str).toLowerCase();
+          return s.includes('websocket') || s.includes('vite') || s.includes('hmr') || s.includes('closed without opened');
+        }
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = e && (e.reason && e.reason.message ? e.reason.message : e.reason);
+          if (isBenign(reason)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            return false;
+          }
+        }, true);
+        window.addEventListener('error', function(e) {
+          var msg = e && (e.message || (e.error && e.error.message));
+          if (isBenign(msg)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            return false;
+          }
+        }, true);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

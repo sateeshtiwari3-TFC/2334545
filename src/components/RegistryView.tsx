@@ -39,6 +39,22 @@ import {
   Square
 } from 'lucide-react';
 import { Project, Studio, Editor, ProjectStatus, ProjectPriority, UserRole, ProjectTemplate } from '../types';
+import { generateUniqueProjectId } from '../utils';
+import { 
+  DEFAULT_BLUEPRINT_TEMPLATES, 
+  getTemplatesFromFirestore, 
+  saveTemplateToFirestore, 
+  deleteTemplateFromFirestore, 
+  createProjectTasksFromTemplate 
+} from '../services/templateService';
+import TemplateBuilderModal from './TemplateBuilderModal';
+import TemplateLibraryModal from './TemplateLibraryModal';
+import IntakeTabCouple from './intake/IntakeTabCouple';
+import IntakeTabCrew from './intake/IntakeTabCrew';
+import IntakeTabFinance from './intake/IntakeTabFinance';
+import IntakeTabDeliverables from './intake/IntakeTabDeliverables';
+import IntakeTabStorage from './intake/IntakeTabStorage';
+import IntakeTabPreview from './intake/IntakeTabPreview';
 
 interface RegistryViewProps {
   studios: Studio[];
@@ -216,11 +232,16 @@ export default function RegistryView({
   onRedirectToProjects
 }: RegistryViewProps) {
   // Form States
+  const [activeTab, setActiveTab] = useState<'couple' | 'crew' | 'finance' | 'deliverables' | 'storage' | 'preview'>('couple');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projectToDeleteId, setProjectToDeleteId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState('');
   const [brideName, setBrideName] = useState('');
   const [groomName, setGroomName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [venue, setVenue] = useState('');
+  const [musicVibe, setMusicVibe] = useState('');
   const [eventType, setEventType] = useState('Wedding Film');
   const [studioId, setStudioId] = useState('');
   const [shootDate, setShootDate] = useState('');
@@ -238,14 +259,13 @@ export default function RegistryView({
   const [firstEditorShare, setFirstEditorShare] = useState<number>(0);
   const [secondEditorShare, setSecondEditorShare] = useState<number>(0);
 
-  // Toggle for advanced fields
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
   // Financial specs
   const [projectAmount, setProjectAmount] = useState<number>(0);
   const [editorPayment, setEditorPayment] = useState<number>(0);
   const [otherExpenses, setOtherExpenses] = useState<number>(0);
   const [advancePayment, setAdvancePayment] = useState<number>(0);
+  const [paymentMode, setPaymentMode] = useState('UPI');
+  const [paymentDueDate, setPaymentDueDate] = useState('');
 
   // Sync split payments when editorPayment or presets change
   useEffect(() => {
@@ -277,6 +297,7 @@ export default function RegistryView({
   // Storage specs
   const [hardDiskName, setHardDiskName] = useState('');
   const [dataSize, setDataSize] = useState('');
+  const [location, setLocation] = useState('');
   const [backupStatus, setBackupStatus] = useState<'pending' | 'backed_up'>('pending');
   const [googleDriveLink, setGoogleDriveLink] = useState('');
   const [rawDataFolder, setRawDataFolder] = useState('');
@@ -309,27 +330,30 @@ export default function RegistryView({
   const [newMilestoneInput, setNewMilestoneInput] = useState('');
 
   // Project Blueprint Templates State
-  const [templates, setTemplates] = useState<ProjectTemplate[]>(() => {
-    try {
-      const saved = localStorage.getItem('theframecuts_project_templates');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const customOnly = parsed.filter((t: ProjectTemplate) => !t.isDefault);
-          return [...DEFAULT_TEMPLATES, ...customOnly];
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load project templates:', err);
-    }
-    return DEFAULT_TEMPLATES;
-  });
-
+  const [templates, setTemplates] = useState<ProjectTemplate[]>(DEFAULT_BLUEPRINT_TEMPLATES);
+  const [activeBlueprint, setActiveBlueprint] = useState<ProjectTemplate | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-  const [showTemplateModal, setShowTemplateModal] = useState<boolean>(false);
+  
+  // Modals state
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState<boolean>(false);
+  const [showTemplateBuilder, setShowTemplateBuilder] = useState<boolean>(false);
+  const [editingTemplateForBuilder, setEditingTemplateForBuilder] = useState<ProjectTemplate | null>(null);
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState<boolean>(false);
   const [saveTemplateName, setSaveTemplateName] = useState<string>('');
   const [saveTemplateDesc, setSaveTemplateDesc] = useState<string>('');
+
+  // Load templates from Firestore on mount
+  useEffect(() => {
+    let isMounted = true;
+    getTemplatesFromFirestore().then(loaded => {
+      if (isMounted && loaded && loaded.length > 0) {
+        setTemplates(loaded);
+      }
+    }).catch(err => {
+      console.warn("Could not load templates from Firestore:", err);
+    });
+    return () => { isMounted = false; };
+  }, []);
 
   // Interactive Template Preview Modal State
   const [previewTemplate, setPreviewTemplate] = useState<ProjectTemplate | null>(null);
@@ -357,6 +381,8 @@ export default function RegistryView({
   };
 
   const applyTemplate = (template: ProjectTemplate) => {
+    setActiveBlueprint(template);
+    setSelectedTemplateId(template.id);
     setEventType(template.eventType);
     
     // Ensure all deliverables exist in availableFunctions
@@ -385,27 +411,92 @@ export default function RegistryView({
       setPriority(template.priority);
     }
 
-    if (template.defaultProjectAmount !== undefined && template.defaultProjectAmount > 0) {
-      setProjectAmount(template.defaultProjectAmount);
+    const pAmt = template.defaultProjectAmount !== undefined && template.defaultProjectAmount > 0 ? template.defaultProjectAmount : 0;
+    if (pAmt > 0) {
+      setProjectAmount(pAmt);
     }
 
-    if (template.defaultEditorPayment !== undefined && template.defaultEditorPayment > 0) {
-      setEditorPayment(template.defaultEditorPayment);
+    const ePay = template.defaultEditorPayment !== undefined && template.defaultEditorPayment > 0 ? template.defaultEditorPayment : 0;
+    if (ePay > 0) {
+      setEditorPayment(ePay);
+    }
+
+    if (template.defaultOtherExpenses !== undefined && template.defaultOtherExpenses > 0) {
+      setOtherExpenses(template.defaultOtherExpenses);
+    }
+
+    if (template.defaultAdvancePercentage !== undefined && template.defaultAdvancePercentage > 0 && pAmt > 0) {
+      setAdvancePayment(Math.round((pAmt * template.defaultAdvancePercentage) / 100));
+    }
+
+    if (template.isSplitProject) {
+      setIsSplitProject(true);
+      if (template.defaultFirstEditorShare) {
+        setFirstEditorShare(template.defaultFirstEditorShare);
+      } else if (ePay > 0) {
+        setFirstEditorShare(Math.round(ePay * 0.6));
+      }
+      if (template.defaultSecondEditorShare) {
+        setSecondEditorShare(template.defaultSecondEditorShare);
+      } else if (ePay > 0) {
+        setSecondEditorShare(Math.round(ePay * 0.4));
+      }
+      if (template.defaultSecondEditorId) {
+        setSecondEditorId(template.defaultSecondEditorId);
+      }
+    } else {
+      setIsSplitProject(false);
+    }
+
+    if (template.defaultPrimaryEditorId) {
+      setAssignedEditorId(template.defaultPrimaryEditorId);
+    }
+
+    if (template.estimatedDataSize) {
+      setDataSize(template.estimatedDataSize);
+    }
+
+    // Auto-calculate delivery date from shoot date if available
+    if (shootDate && template.defaultTurnaroundDays) {
+      const sDate = new Date(shootDate);
+      sDate.setDate(sDate.getDate() + template.defaultTurnaroundDays);
+      setDeliveryDate(sDate.toISOString().slice(0, 10));
     }
 
     if (template.notes) {
       setNotes(template.notes);
     }
 
-    setSelectedTemplateId(template.id);
-    setShowTemplateModal(false);
+    setShowTemplateLibrary(false);
+    setPreviewTemplate(null);
     setToast({
-      message: `✨ Applied Project Blueprint: "${template.name}"`,
+      message: `✨ Applied Project Blueprint: "${template.name}" with ${template.tasks?.length || 0} auto-tasks & ${template.deliverables?.length || 0} deliverables.`,
       type: 'success'
     });
   };
 
-  const handleSaveCurrentAsTemplate = () => {
+  const handleSaveBlueprint = async (template: ProjectTemplate) => {
+    await saveTemplateToFirestore(template);
+    const updated = await getTemplatesFromFirestore();
+    setTemplates(updated);
+    setToast({
+      message: `💾 Blueprint "${template.name}" saved to studio library.`,
+      type: 'success'
+    });
+  };
+
+  const handleDeleteBlueprint = async (id: string) => {
+    await deleteTemplateFromFirestore(id);
+    const updated = await getTemplatesFromFirestore();
+    setTemplates(updated);
+    if (selectedTemplateId === id) {
+      setSelectedTemplateId('');
+      setActiveBlueprint(null);
+    }
+    setToast({ message: 'Blueprint template removed from library.', type: 'success' });
+  };
+
+  const handleSaveCurrentAsTemplate = async () => {
     if (!saveTemplateName.trim()) {
       setToast({ message: 'Template Blueprint name is required.', type: 'error' });
       return;
@@ -421,37 +512,30 @@ export default function RegistryView({
       priority,
       defaultProjectAmount: projectAmount > 0 ? projectAmount : undefined,
       defaultEditorPayment: editorPayment > 0 ? editorPayment : undefined,
+      defaultOtherExpenses: otherExpenses > 0 ? otherExpenses : undefined,
+      defaultAdvancePercentage: projectAmount > 0 ? Math.round((advancePayment / projectAmount) * 100) : 40,
+      isSplitProject,
+      defaultFirstEditorShare: isSplitProject ? firstEditorShare : undefined,
+      defaultSecondEditorShare: isSplitProject ? secondEditorShare : undefined,
+      defaultPrimaryEditorId: assignedEditorId || undefined,
+      defaultSecondEditorId: isSplitProject ? secondEditorId || undefined : undefined,
       notes: notes.trim() || undefined,
+      estimatedDataSize: dataSize.trim() || undefined,
+      defaultTurnaroundDays: 30,
       isDefault: false,
       createdAt: new Date().toISOString()
     };
 
-    const updatedTemplates = [...templates, newTpl];
-    setTemplates(updatedTemplates);
-
-    try {
-      localStorage.setItem('theframecuts_project_templates', JSON.stringify(updatedTemplates));
-    } catch (err) {
-      console.error('Failed to save template to localStorage:', err);
-    }
+    await saveTemplateToFirestore(newTpl);
+    const updated = await getTemplatesFromFirestore();
+    setTemplates(updated);
 
     setShowSaveTemplateModal(false);
     setSaveTemplateName('');
     setSaveTemplateDesc('');
     setSelectedTemplateId(newTpl.id);
+    setActiveBlueprint(newTpl);
     setToast({ message: `💾 Saved new Blueprint Template: "${newTpl.name}"`, type: 'success' });
-  };
-
-  const handleDeleteTemplate = (id: string) => {
-    const updated = templates.filter(t => t.id !== id);
-    setTemplates(updated);
-    try {
-      localStorage.setItem('theframecuts_project_templates', JSON.stringify(updated));
-    } catch (err) {
-      console.error('Failed to update templates in localStorage:', err);
-    }
-    if (selectedTemplateId === id) setSelectedTemplateId('');
-    setToast({ message: 'Blueprint template removed.', type: 'success' });
   };
 
   // UI state
@@ -569,12 +653,64 @@ export default function RegistryView({
       const selectedEditor = editors.find(ed => ed.id === assignedEditorId);
       const selectedSecondEditor = isSplitProject ? editors.find(ed => ed.id === secondEditorId) : null;
       
-      // Auto-generate project ID
-      const autoId = `PRJ-2026-${String(projects.length + 1).padStart(3, '0')}`;
       const finalCouplePhoto = couplePhoto || DEFAULT_COVERS[0].url;
       const coupleName = `${groomName.trim()} & ${brideName.trim()}`;
-
       const finalEventType = selectedFunctions.length > 0 ? selectedFunctions.join(', ') : eventType;
+
+      if (editingProject && onUpdateProject) {
+        await onUpdateProject(editingProject.id, {
+          projectName: projectName.trim(),
+          brideName: brideName.trim(),
+          groomName: groomName.trim(),
+          coupleName,
+          clientPhone: clientPhone.trim() || undefined,
+          clientEmail: clientEmail.trim() || undefined,
+          venue: venue.trim() || undefined,
+          paymentMode,
+          paymentDueDate: paymentDueDate || undefined,
+          eventType: finalEventType,
+          studioId,
+          studioName: selectedStudio ? selectedStudio.name : 'Direct Client',
+          shootDate,
+          deliveryDate,
+          assignedEditorId: assignedEditorId || undefined,
+          assignedEditorName: selectedEditor ? selectedEditor.name : 'Unassigned',
+          isSplitProject,
+          secondEditorId: isSplitProject ? (secondEditorId || undefined) : undefined,
+          secondEditorName: isSplitProject ? (selectedSecondEditor ? selectedSecondEditor.name : 'Unassigned') : undefined,
+          firstEditorShare: isSplitProject ? firstEditorShare : undefined,
+          secondEditorShare: isSplitProject ? secondEditorShare : undefined,
+          status,
+          priority,
+          projectAmount,
+          editorPayment,
+          otherExpenses,
+          advancePayment,
+          remainingBalance: calculatedRemainingBalance,
+          couplePhoto: finalCouplePhoto,
+          notes: notes.trim(),
+          hardDiskName: hardDiskName.trim(),
+          dataSize: dataSize.trim(),
+          location: location.trim() || undefined,
+          backupStatus,
+          googleDriveLink: googleDriveLink.trim(),
+          rawDataFolder: rawDataFolder.trim(),
+          deliveryFolder: deliveryFolder.trim(),
+          finalExportFolder: finalExportFolder.trim(),
+          customMilestones: customMilestones
+        });
+
+        setToast({ 
+          message: `✨ Project "${coupleName}" updated successfully!`, 
+          type: 'success' 
+        });
+        setEditingProject(null);
+        resetForm();
+        return;
+      }
+
+      // Auto-generate unique project ID without collisions
+      const autoId = generateUniqueProjectId(projects);
 
       await onAddProject({
         id: autoId,
@@ -582,6 +718,11 @@ export default function RegistryView({
         brideName: brideName.trim(),
         groomName: groomName.trim(),
         coupleName,
+        clientPhone: clientPhone.trim() || undefined,
+        clientEmail: clientEmail.trim() || undefined,
+        venue: venue.trim() || undefined,
+        paymentMode,
+        paymentDueDate: paymentDueDate || undefined,
         eventType: finalEventType,
         studioId,
         studioName: selectedStudio ? selectedStudio.name : 'Direct Client',
@@ -605,6 +746,7 @@ export default function RegistryView({
         notes: notes.trim(),
         hardDiskName: hardDiskName.trim(),
         dataSize: dataSize.trim(),
+        location: location.trim() || undefined,
         backupStatus,
         googleDriveLink: googleDriveLink.trim(),
         rawDataFolder: rawDataFolder.trim(),
@@ -613,8 +755,28 @@ export default function RegistryView({
         customMilestones: customMilestones
       });
 
+      // Auto-instantiate standard workflow tasks from active blueprint if configured
+      let createdTasksCount = 0;
+      if (activeBlueprint && activeBlueprint.tasks && activeBlueprint.tasks.length > 0) {
+        try {
+          createdTasksCount = await createProjectTasksFromTemplate(
+            autoId,
+            coupleName,
+            activeBlueprint,
+            shootDate,
+            assignedEditorId,
+            secondEditorId
+          );
+        } catch (tErr) {
+          console.warn("Could not auto-generate tasks from blueprint:", tErr);
+        }
+      }
+
       setRegistrationSuccess(autoId);
-      setToast({ message: `Successfully registered project: ${coupleName}`, type: 'success' });
+      setToast({ 
+        message: `✨ Project "${coupleName}" registered!${createdTasksCount > 0 ? ` Initialized ${createdTasksCount} workflow tasks from "${activeBlueprint?.name}".` : ''}`, 
+        type: 'success' 
+      });
       
       // Auto scroll to top to see success
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -632,9 +794,14 @@ export default function RegistryView({
   };
 
   const resetForm = () => {
+    setEditingProject(null);
     setProjectName('');
     setBrideName('');
     setGroomName('');
+    setClientPhone('');
+    setClientEmail('');
+    setVenue('');
+    setMusicVibe('');
     setEventType('Wedding Film');
     setShootDate('');
     setDeliveryDate('');
@@ -647,8 +814,11 @@ export default function RegistryView({
     setEditorPayment(0);
     setOtherExpenses(0);
     setAdvancePayment(0);
+    setPaymentMode('UPI');
+    setPaymentDueDate('');
     setHardDiskName('');
     setDataSize('');
+    setLocation('');
     setBackupStatus('pending');
     setGoogleDriveLink('');
     setRawDataFolder('');
@@ -662,6 +832,7 @@ export default function RegistryView({
     setSplitPreset('50-50');
     setFirstEditorShare(0);
     setSecondEditorShare(0);
+    setActiveTab('couple');
     setCustomMilestones(
       DEFAULT_MILESTONES.map((m, idx) => ({
         id: `milestone-${idx}-${Date.now()}`,
@@ -806,11 +977,11 @@ export default function RegistryView({
                   Project Templates & Blueprints
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-gold-500/15 text-gold-300 border border-gold-500/25">
-                  {templates.length} Ready
+                  {templates.length} Blueprints
                 </span>
               </div>
               <p className="text-xs text-gray-400 font-mono mt-0.5">
-                Load predefined deliverables, milestone workflows & pricing structures in 1-click.
+                Instantiate predefined deliverables, standard task pipelines & budget split structures in 1-click.
               </p>
             </div>
           </div>
@@ -818,28 +989,40 @@ export default function RegistryView({
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
-              onClick={() => setShowTemplateModal(true)}
-              className="px-4 py-2.5 bg-gold-500/15 hover:bg-gold-500/25 border border-gold-500/30 text-gold-300 hover:text-white rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center space-x-2 shadow-md gold-glow"
+              onClick={() => setShowTemplateLibrary(true)}
+              className="px-4 py-2 bg-gold-500 hover:bg-gold-400 text-charcoal-950 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center space-x-2 shadow-md gold-glow"
             >
-              <Sparkles className="w-4 h-4 text-gold-400" />
-              <span>Browse Blueprint Library ({templates.length})</span>
+              <Sparkles className="w-4 h-4" />
+              <span>Blueprint Repository ({templates.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setEditingTemplateForBuilder(null);
+                setShowTemplateBuilder(true);
+              }}
+              className="px-3.5 py-2 bg-charcoal-800 hover:bg-charcoal-700 border border-gold-500/30 text-gold-300 hover:text-white rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center space-x-1.5 shadow-md"
+            >
+              <Plus className="w-3.5 h-3.5 text-gold-400" />
+              <span>+ New Blueprint</span>
             </button>
 
             <button
               type="button"
               onClick={() => setShowSaveTemplateModal(true)}
-              className="px-4 py-2.5 bg-charcoal-800/80 hover:bg-charcoal-700 border border-white/10 text-gray-300 hover:text-white rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center space-x-2 shadow-md"
+              className="px-3.5 py-2 bg-charcoal-800/80 hover:bg-charcoal-700 border border-white/10 text-gray-300 hover:text-white rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center space-x-1.5 shadow-md"
             >
-              <Bookmark className="w-4 h-4 text-gray-400" />
-              <span>Save Form as Template</span>
+              <Bookmark className="w-3.5 h-3.5 text-gray-400" />
+              <span>Save Form as Blueprint</span>
             </button>
           </div>
         </div>
 
         {/* Quick Pills Selector */}
         <div className="pt-2 border-t border-white/5 flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-mono text-gray-400 uppercase tracking-wider font-semibold mr-1">
-            ⚡ Quick Load:
+          <span className="text-[11px] font-mono text-gold-400 uppercase tracking-wider font-semibold mr-1 flex items-center space-x-1">
+            <span>⚡ Quick Instantiate:</span>
           </span>
           {templates.map((tpl) => {
             const isSelected = selectedTemplateId === tpl.id;
@@ -855,8 +1038,10 @@ export default function RegistryView({
                   }`}
                 >
                   <span>{tpl.name}</span>
-                  {tpl.isDefault && (
-                    <span className="text-[9px] opacity-75 font-normal">(Preset)</span>
+                  {tpl.tasks && tpl.tasks.length > 0 && (
+                    <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${isSelected ? 'bg-charcoal-950/40 text-charcoal-950 font-bold' : 'bg-charcoal-800 text-gold-400'}`}>
+                      {tpl.tasks.length} tasks
+                    </span>
                   )}
                 </button>
                 <button
@@ -873,6 +1058,72 @@ export default function RegistryView({
         </div>
       </div>
 
+      {/* ACTIVE BLUEPRINT INDICATOR BANNER */}
+      {activeBlueprint && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative z-10 p-4 md:p-5 bg-gradient-to-r from-gold-950/40 via-charcoal-900 to-charcoal-950 border border-gold-500/40 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4"
+        >
+          <div className="flex items-start space-x-3.5">
+            <div className="w-9 h-9 rounded-xl bg-gold-500/20 border border-gold-500/40 text-gold-400 flex items-center justify-center font-bold shrink-0 mt-0.5">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-gold-400">
+                  Active Instantiated Blueprint
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-gold-500/20 text-gold-300 border border-gold-500/30">
+                  {activeBlueprint.eventType}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                  {activeBlueprint.defaultTurnaroundDays || 30} Days Turnaround
+                </span>
+              </div>
+              <h4 className="text-base font-bold text-white font-display">
+                {activeBlueprint.name}
+              </h4>
+              <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-gray-300 pt-0.5">
+                <span>📋 <strong>{activeBlueprint.tasks?.length || 0}</strong> Auto-Workflow Tasks</span>
+                <span>•</span>
+                <span>🎬 <strong>{activeBlueprint.deliverables?.length || 0}</strong> Deliverables</span>
+                <span>•</span>
+                <span>💰 Budget: <strong>₹{(activeBlueprint.defaultProjectAmount || 0).toLocaleString('en-IN')}</strong></span>
+                <span>•</span>
+                <span>✂️ Editor Wage: <strong>₹{(activeBlueprint.defaultEditorPayment || 0).toLocaleString('en-IN')}</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0 self-end md:self-center">
+            <button
+              type="button"
+              onClick={() => {
+                setEditingTemplateForBuilder(activeBlueprint);
+                setShowTemplateBuilder(true);
+              }}
+              className="px-3 py-1.5 bg-charcoal-800 hover:bg-charcoal-700 text-gold-300 rounded-xl text-xs font-mono font-bold border border-gold-500/30 cursor-pointer flex items-center space-x-1"
+            >
+              <Edit className="w-3 h-3" />
+              <span>Edit Blueprint</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveBlueprint(null);
+                setSelectedTemplateId('');
+                setToast({ message: 'Blueprint cleared from form.', type: 'success' });
+              }}
+              className="px-3 py-1.5 bg-charcoal-800 hover:bg-red-500/20 text-gray-400 hover:text-red-300 rounded-xl text-xs font-mono border border-white/5 cursor-pointer flex items-center space-x-1"
+            >
+              <X className="w-3 h-3" />
+              <span>Clear</span>
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Validation Banner */}
       {validationError && (
         <motion.div 
@@ -885,962 +1136,464 @@ export default function RegistryView({
         </motion.div>
       )}
 
-      {/* Main Single Page Layout */}
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-10 relative z-10">
+      {/* INTAKE ONBOARDING TAB & STEPPER SYSTEM */}
+      <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
         
-        {/* LEFT COLUMN: THE REGISTRATION FORM (7 Cols) */}
-        <div className="lg:col-span-7 space-y-8">
+        {/* TAB SYSTEM NAVIGATION BAR */}
+        <div className="glass-panel p-3 md:p-4 rounded-3xl border border-gold-500/20 shadow-2xl bg-charcoal-950/90 backdrop-blur-xl space-y-3">
           
-          {/* SECTION 1: COUPLE & EVENT CEREMONY */}
-          <div className="glass-panel p-6 md:p-8 rounded-3xl border border-gold-500/15 space-y-6 shadow-xl transition-all hover:border-gold-500/25">
-            <div className="flex items-center space-x-3 pb-3 border-b border-white/5">
-              <span className="w-7 h-7 rounded-full bg-gold-500/15 text-gold-300 flex items-center justify-center text-xs font-bold font-mono border border-gold-500/25">1</span>
-              <h3 className="text-sm md:text-base font-bold text-white uppercase tracking-wider font-display">Couple & Event Ceremony</h3>
+          {/* Progress Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2 pt-1">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-gold-400 flex items-center space-x-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Intake & Onboarding Wizard</span>
+              </span>
+              <span className="text-gray-500 font-mono text-xs">•</span>
+              <span className="text-xs font-mono text-gray-300">
+                Step {['couple', 'crew', 'finance', 'deliverables', 'storage', 'preview'].indexOf(activeTab) + 1} of 6
+              </span>
             </div>
 
-            <div className="space-y-6">
-              {/* Couple Names Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">
-                    Groom Name <span className="text-gold-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-500" />
-                    <input 
-                      type="text" 
-                      placeholder="Groom's Full Name" 
-                      value={groomName} 
-                      onChange={(e) => { setGroomName(e.target.value); setValidationError(''); }} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 hover:border-gold-500/20 focus:border-gold-500/50 rounded-xl pl-11 pr-4 py-3 text-sm md:text-base text-white placeholder-gray-600 focus:bg-charcoal-900 focus:outline-none transition-all" 
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">
-                    Bride Name <span className="text-gold-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-500" />
-                    <input 
-                      type="text" 
-                      placeholder="Bride's Full Name" 
-                      value={brideName} 
-                      onChange={(e) => { setBrideName(e.target.value); setValidationError(''); }} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 hover:border-gold-500/20 focus:border-gold-500/50 rounded-xl pl-11 pr-4 py-3 text-sm md:text-base text-white placeholder-gray-600 focus:bg-charcoal-900 focus:outline-none transition-all" 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Project Film Title */}
-              <div>
-                <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">
-                  Project Wedding Film Title <span className="text-gold-400">*</span>
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Rohan & Riya Destination Wedding Film" 
-                  value={projectName} 
-                  onChange={(e) => { setProjectName(e.target.value); setValidationError(''); }} 
-                  className="w-full bg-charcoal-900/60 border border-white/10 hover:border-gold-500/20 focus:border-gold-500/50 rounded-xl px-4 py-3.5 text-sm md:text-base text-white placeholder-gray-600 focus:bg-charcoal-900 focus:outline-none transition-all" 
-                />
-              </div>
-
-              {/* Ceremony Type & Studio Partner */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">
-                    Ceremony Type
-                  </label>
-                  <select 
-                    value={eventType} 
-                    onChange={(e) => setEventType(e.target.value)} 
-                    className="w-full bg-charcoal-900/60 border border-white/10 hover:border-gold-500/20 focus:border-gold-500/50 rounded-xl px-4 py-3 text-sm md:text-base text-gray-200 focus:bg-charcoal-900 focus:outline-none cursor-pointer transition-all"
-                  >
-                    <option value="Wedding Film" className="bg-charcoal-950">Wedding Film</option>
-                    <option value="Pre-Wedding Film" className="bg-charcoal-950">Pre-Wedding Film</option>
-                    <option value="Engagement Teaser" className="bg-charcoal-950">Engagement Teaser</option>
-                    <option value="Sangeet Cut" className="bg-charcoal-950">Sangeet Cut</option>
-                    <option value="Cinematic Highlight" className="bg-charcoal-950">Cinematic Highlight</option>
-                    <option value="Anniversary special" className="bg-charcoal-950">Anniversary Special</option>
-                    <option value="Commercial Event" className="bg-charcoal-950">Commercial Event</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">
-                    Studio Partner
-                  </label>
-                  {userRole === 'studio' ? (
-                    <div className="w-full bg-charcoal-900/40 border border-white/5 rounded-xl px-4 py-3.5 text-sm text-gray-400 font-medium">
-                      {studios.find(s => s.id === studioId)?.name || 'Direct Client'}
-                    </div>
-                  ) : (
-                    <select 
-                      value={studioId} 
-                      onChange={(e) => setStudioId(e.target.value)} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 hover:border-gold-500/20 focus:border-gold-500/50 rounded-xl px-4 py-3 text-sm md:text-base text-gray-200 focus:bg-charcoal-900 focus:outline-none cursor-pointer transition-all"
-                    >
-                      <option value="" className="bg-charcoal-950">Direct Client (No Studio)</option>
-                      {studios.map(s => <option key={s.id} value={s.id} className="bg-charcoal-950">{s.name}</option>)}
-                    </select>
-                  )}
-                </div>
-              </div>
+            {/* Quick Actions */}
+            <div className="flex items-center space-x-2">
+              {editingProject && (
+                <span className="px-2.5 py-1 bg-amber-500/15 border border-amber-500/30 text-amber-300 rounded-lg text-xs font-mono font-bold flex items-center space-x-1">
+                  <span>Editing: {editingProject.id}</span>
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('preview');
+                  window.scrollTo({ top: 400, behavior: 'smooth' });
+                }}
+                className="px-3 py-1.5 bg-gold-500/15 hover:bg-gold-500/25 border border-gold-500/30 text-gold-300 text-xs font-mono font-bold rounded-xl transition-all cursor-pointer flex items-center space-x-1.5"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Quick Review & Register</span>
+              </button>
             </div>
           </div>
 
-          {/* SECTION 2: CREW, SCHEDULE & PRIORITY */}
-          <div className="glass-panel p-6 md:p-8 rounded-3xl border border-gold-500/15 space-y-6 shadow-xl transition-all hover:border-gold-500/25">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/5 gap-3">
-              <div className="flex items-center space-x-3">
-                <span className="w-7 h-7 rounded-full bg-gold-500/15 text-gold-300 flex items-center justify-center text-xs font-bold font-mono border border-gold-500/25">2</span>
-                <h3 className="text-sm md:text-base font-bold text-white uppercase tracking-wider font-display">Crew, Schedule & Priority</h3>
-              </div>
-              
-              {/* Timeline Badge */}
-              {shootDate && deliveryDate && (
-                <div className="flex items-center space-x-2 bg-gold-500/10 border border-gold-500/20 rounded-xl px-3.5 py-1.5 text-xs font-mono text-gold-300 gold-glow">
-                  <Clock className="w-3.5 h-3.5 text-gold-400 shrink-0" />
-                  <span>
-                    Window: <strong className="font-bold text-white">{daysDifference} Days</strong>
-                  </span>
-                  <span className="text-gold-500/30">|</span>
-                  <span className={daysToDeadline !== null && daysToDeadline < 0 ? "text-red-400 font-bold" : "text-emerald-400 font-bold"}>
-                    {daysToDeadline !== null ? (
-                      daysToDeadline < 0 
-                        ? `Lapsed ${Math.abs(daysToDeadline)}d` 
-                        : daysToDeadline === 0 
-                          ? 'Due Today!' 
-                          : `${daysToDeadline}d Left`
-                    ) : ''}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Timelines and Staffing */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Left Side: Schedule */}
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">
-                    Shoot/Ceremony Date <span className="text-gold-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-500 pointer-events-none" />
-                    <input 
-                      type="date" 
-                      value={shootDate} 
-                      onChange={(e) => { setShootDate(e.target.value); setValidationError(''); }} 
-                      onClick={(e) => { try { e.currentTarget.showPicker(); } catch (err) {} }}
-                      className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm md:text-base text-white focus:outline-none focus:border-gold-500/50 cursor-pointer transition-colors" 
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">
-                    Delivery Deadline <span className="text-gold-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-500 pointer-events-none" />
-                    <input 
-                      type="date" 
-                      value={deliveryDate} 
-                      onChange={(e) => { setDeliveryDate(e.target.value); setValidationError(''); }} 
-                      onClick={(e) => { try { e.currentTarget.showPicker(); } catch (err) {} }}
-                      className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm md:text-base text-white focus:outline-none focus:border-gold-500/50 cursor-pointer transition-colors" 
-                    />
-                  </div>
-
-                  {shootDate && (
-                    <div className="flex flex-wrap gap-1.5 mt-3 justify-start">
-                      <span className="text-[11px] font-mono text-gray-500 self-center mr-1">Quick offset:</span>
-                      {[7, 14, 30, 60, 90].map((days) => {
-                        const calculatedDate = new Date(shootDate);
-                        calculatedDate.setDate(calculatedDate.getDate() + days);
-                        if (isNaN(calculatedDate.getTime())) return null;
-                        const isSelected = deliveryDate === calculatedDate.toISOString().split('T')[0];
-                        return (
-                          <button
-                            key={days}
-                            type="button"
-                            onClick={() => setDeliveryOffset(days)}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all border ${
-                              isSelected
-                                ? "bg-gold-500/20 text-gold-300 border-gold-500/40 shadow-inner"
-                                : "bg-charcoal-900/40 text-gray-400 border-white/5 hover:border-white/10 hover:text-white"
-                            }`}
-                          >
-                            +{days}d
-                          </button>
-                        );
-                      })}
-                    </div>
+          {/* Tab Selection Buttons Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1">
+            {[
+              {
+                id: 'couple',
+                num: '1',
+                icon: '💍',
+                title: 'Couple & Event',
+                isComplete: !!(groomName.trim() && brideName.trim() && projectName.trim()),
+                activeClass: 'bg-gradient-to-br from-rose-500/25 via-pink-950/25 to-charcoal-900 text-white border-rose-500/70 shadow-lg shadow-rose-500/15 ring-1 ring-rose-500/30',
+                hoverClass: 'hover:border-rose-500/40 hover:bg-rose-500/5',
+                activeText: 'text-rose-300 font-bold',
+                badgeActive: 'bg-rose-500/30 text-rose-200 border border-rose-500/40',
+                accentBar: 'bg-rose-500',
+                subDot: 'bg-rose-400'
+              },
+              {
+                id: 'crew',
+                num: '2',
+                icon: '🎬',
+                title: 'Crew & Timeline',
+                isComplete: !!(shootDate && deliveryDate),
+                activeClass: 'bg-gradient-to-br from-sky-500/25 via-cyan-950/25 to-charcoal-900 text-white border-sky-500/70 shadow-lg shadow-sky-500/15 ring-1 ring-sky-500/30',
+                hoverClass: 'hover:border-sky-500/40 hover:bg-sky-500/5',
+                activeText: 'text-sky-300 font-bold',
+                badgeActive: 'bg-sky-500/30 text-sky-200 border border-sky-500/40',
+                accentBar: 'bg-sky-500',
+                subDot: 'bg-sky-400'
+              },
+              {
+                id: 'finance',
+                num: '3',
+                icon: '💰',
+                title: 'Ledger & Finance',
+                isComplete: projectAmount > 0,
+                activeClass: 'bg-gradient-to-br from-emerald-500/25 via-teal-950/25 to-charcoal-900 text-white border-emerald-500/70 shadow-lg shadow-emerald-500/15 ring-1 ring-emerald-500/30',
+                hoverClass: 'hover:border-emerald-500/40 hover:bg-emerald-500/5',
+                activeText: 'text-emerald-300 font-bold',
+                badgeActive: 'bg-emerald-500/30 text-emerald-200 border border-emerald-500/40',
+                accentBar: 'bg-emerald-500',
+                subDot: 'bg-emerald-400'
+              },
+              {
+                id: 'deliverables',
+                num: '4',
+                icon: '🎞️',
+                title: 'Deliverables & Tasks',
+                isComplete: selectedFunctions.length > 0,
+                activeClass: 'bg-gradient-to-br from-purple-500/25 via-indigo-950/25 to-charcoal-900 text-white border-purple-500/70 shadow-lg shadow-purple-500/15 ring-1 ring-purple-500/30',
+                hoverClass: 'hover:border-purple-500/40 hover:bg-purple-500/5',
+                activeText: 'text-purple-300 font-bold',
+                badgeActive: 'bg-purple-500/30 text-purple-200 border border-purple-500/40',
+                accentBar: 'bg-purple-500',
+                subDot: 'bg-purple-400'
+              },
+              {
+                id: 'storage',
+                num: '5',
+                icon: '💾',
+                title: 'Storage & Cloud',
+                isComplete: !!(hardDiskName || googleDriveLink),
+                activeClass: 'bg-gradient-to-br from-amber-500/25 via-orange-950/25 to-charcoal-900 text-white border-amber-500/70 shadow-lg shadow-amber-500/15 ring-1 ring-amber-500/30',
+                hoverClass: 'hover:border-amber-500/40 hover:bg-amber-500/5',
+                activeText: 'text-amber-300 font-bold',
+                badgeActive: 'bg-amber-500/30 text-amber-200 border border-amber-500/40',
+                accentBar: 'bg-amber-500',
+                subDot: 'bg-amber-400'
+              },
+              {
+                id: 'preview',
+                num: '6',
+                icon: '🎴',
+                title: 'Poster & Review',
+                isComplete: false,
+                activeClass: 'bg-gradient-to-br from-gold-500/30 via-yellow-950/30 to-charcoal-900 text-white border-gold-500/80 shadow-lg shadow-gold-500/20 ring-1 ring-gold-500/40',
+                hoverClass: 'hover:border-gold-500/40 hover:bg-gold-500/5',
+                activeText: 'text-gold-300 font-bold',
+                badgeActive: 'bg-gold-500/30 text-gold-200 border border-gold-500/40',
+                accentBar: 'bg-gold-500',
+                subDot: 'bg-gold-400'
+              }
+            ].map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab.id as any);
+                    setValidationError('');
+                  }}
+                  className={`p-3.5 rounded-2xl text-left border transition-all relative flex flex-col justify-between cursor-pointer group select-none overflow-hidden ${
+                    isActive
+                      ? tab.activeClass
+                      : `bg-charcoal-900/60 text-gray-400 border-white/5 ${tab.hoverClass} hover:text-gray-200`
+                  }`}
+                >
+                  {/* Top indicator bar for active tab */}
+                  {isActive && (
+                    <div className={`absolute top-0 left-0 right-0 h-1 ${tab.accentBar}`} />
                   )}
-                </div>
-              </div>
 
-              {/* Right Side: Crew Sync */}
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">
-                    Lead Cinematic Editor
-                  </label>
-                  {userRole === 'studio' ? (
-                    <div className="w-full bg-charcoal-900/40 border border-white/5 rounded-xl px-4 py-3.5 text-sm text-gray-400 font-medium">
-                      👤 {editors.find(ed => ed.id === assignedEditorId)?.name || 'Unassigned'}
-                    </div>
-                  ) : (
-                    <select 
-                      value={assignedEditorId} 
-                      onChange={(e) => setAssignedEditorId(e.target.value)} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-3 text-sm md:text-base text-gray-200 focus:outline-none focus:border-gold-500/50 cursor-pointer transition-colors"
-                    >
-                      <option value="" className="bg-charcoal-950">Unassigned (Queue Pool)</option>
-                      {editors.map(ed => (
-                        <option key={ed.id} value={ed.id} className="bg-charcoal-950">
-                          👤 {ed.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">
-                    Workflow Stage
-                  </label>
-                  {userRole === 'studio' ? (
-                    <div className="flex items-center space-x-2 bg-charcoal-900/40 border border-white/5 rounded-xl px-4 py-3.5 text-sm text-gray-200 font-semibold capitalize">
-                      <span className="w-2.5 h-2.5 rounded-full bg-gold-500" />
-                      <span>{WORKFLOW_STAGES.find(s => s.id === status)?.label || 'Data Received'}</span>
-                    </div>
-                  ) : (
-                    <select 
-                      value={status} 
-                      onChange={(e) => setStatus(e.target.value as ProjectStatus)} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-3 text-sm md:text-base text-gray-200 focus:outline-none focus:border-gold-500/50 cursor-pointer transition-colors"
-                    >
-                      {WORKFLOW_STAGES.map(s => (
-                        <option key={s.id} value={s.id} className="bg-charcoal-950">
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                {userRole !== 'studio' && (
-                  <div className="pt-2">
-                    <label className="flex items-center space-x-3 cursor-pointer group">
-                      <input 
-                        type="checkbox" 
-                        checked={isSplitProject}
-                        onChange={(e) => setIsSplitProject(e.target.checked)}
-                        className="w-4 h-4 rounded border-white/10 text-gold-500 bg-charcoal-900 focus:ring-0 cursor-pointer focus:border-gold-500"
-                      />
-                      <span className="text-xs md:text-sm text-gray-300 font-semibold group-hover:text-white transition-colors">
-                        Assign 2 Editors (Split Project)?
+                  <div className="flex items-center justify-between w-full mb-2">
+                    <span className="text-lg leading-none filter drop-shadow">{tab.icon}</span>
+                    {tab.isComplete ? (
+                      <span className="w-4 h-4 rounded-full bg-emerald-500 text-charcoal-950 text-[10px] font-bold flex items-center justify-center font-mono shadow">
+                        ✓
                       </span>
-                    </label>
-
-                    {isSplitProject && (
-                      <div className="mt-3 p-4 bg-charcoal-900/80 rounded-2xl border border-white/5 space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-[10px] text-gray-400 font-mono font-bold uppercase mb-1">Secondary Editor</label>
-                            <select 
-                              value={secondEditorId} 
-                              onChange={(e) => setSecondEditorId(e.target.value)} 
-                              className="w-full bg-charcoal-950 border border-white/10 rounded-lg px-3 py-2 text-xs md:text-sm text-white focus:outline-none cursor-pointer"
-                            >
-                              <option value="" className="bg-charcoal-950">Select Second Editor...</option>
-                              {editors.filter(ed => ed.id !== assignedEditorId).map(ed => (
-                                <option key={ed.id} value={ed.id} className="bg-charcoal-950">{ed.name}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-[10px] text-gray-400 font-mono font-bold uppercase mb-1">Payment Ratio</label>
-                            <select 
-                              value={splitPreset} 
-                              onChange={(e) => setSplitPreset(e.target.value)} 
-                              className="w-full bg-charcoal-950 border border-white/10 rounded-lg px-3 py-2 text-xs md:text-sm text-white focus:outline-none cursor-pointer"
-                            >
-                              <option value="50-50" className="bg-charcoal-950">Equal Split (50% / 50%)</option>
-                              <option value="60-40" className="bg-charcoal-950">Primary (60%) / Secondary (40%)</option>
-                              <option value="70-30" className="bg-charcoal-950">Primary (70%) / Secondary (30%)</option>
-                              <option value="80-20" className="bg-charcoal-950">Primary (80%) / Secondary (20%)</option>
-                              <option value="custom" className="bg-charcoal-950">Custom Split (Manual)</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="p-3.5 bg-charcoal-950 rounded-xl border border-white/5 space-y-2 text-xs font-mono">
-                          <div className="flex justify-between text-gray-400 font-semibold">
-                            <span>Total Editor Share:</span>
-                            <span className="text-gold-400 font-bold">₹{editorPayment.toLocaleString('en-IN')}</span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 text-gray-300">
-                            <div>
-                              <span className="font-semibold block text-[10px] text-gray-500 uppercase">Lead Share:</span>
-                              {splitPreset === 'custom' ? (
-                                <input 
-                                  type="number"
-                                  value={firstEditorShare}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    setFirstEditorShare(val);
-                                    setSecondEditorShare(Math.max(0, editorPayment - val));
-                                  }}
-                                  className="w-full bg-charcoal-900 border border-white/10 rounded px-2 py-1 mt-1 text-xs font-bold text-white focus:outline-none focus:border-gold-500"
-                                />
-                              ) : (
-                                <strong className="block text-white text-sm mt-0.5">₹{firstEditorShare.toLocaleString('en-IN')}</strong>
-                              )}
-                            </div>
-                            <div>
-                              <span className="font-semibold block text-[10px] text-gray-500 uppercase">Secondary Share:</span>
-                              {splitPreset === 'custom' ? (
-                                <input 
-                                  type="number"
-                                  value={secondEditorShare}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    setSecondEditorShare(val);
-                                    setFirstEditorShare(Math.max(0, editorPayment - val));
-                                  }}
-                                  className="w-full bg-charcoal-900 border border-white/10 rounded px-2 py-1 mt-1 text-xs font-bold text-white focus:outline-none focus:border-gold-500"
-                                />
-                              ) : (
-                                <strong className="block text-white text-sm mt-0.5">₹{secondEditorShare.toLocaleString('en-IN')}</strong>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                    ) : (
+                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded transition-colors ${
+                        isActive ? tab.badgeActive : 'bg-charcoal-800 text-gray-500'
+                      }`}>
+                        #{tab.num}
+                      </span>
                     )}
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Interactive Priorities */}
-            <div className="space-y-3 pt-4 border-t border-white/5">
-              <span className="block text-xs md:text-sm font-semibold text-gray-400 font-mono uppercase tracking-wider">
-                Queue Priority Assignment
-              </span>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {PRIORITIES.map((p) => {
-                  const isActive = priority === p.id;
-                  
-                  let priorityStyles = {
-                    border: "border-white/5 hover:border-white/10",
-                    activeBg: "bg-gray-500/10 text-white border-gray-500/50 shadow-inner shadow-gray-500/10",
-                    indicator: "bg-gray-400"
-                  };
-                  if (p.id === 'medium') {
-                    priorityStyles = {
-                      border: "border-white/5 hover:border-white/10",
-                      activeBg: "bg-sky-500/15 text-sky-200 border-sky-500/40 shadow-inner shadow-sky-500/10",
-                      indicator: "bg-sky-400"
-                    };
-                  } else if (p.id === 'high') {
-                    priorityStyles = {
-                      border: "border-white/5 hover:border-gold-500/20",
-                      activeBg: "bg-gold-500/15 text-gold-300 border-gold-500/40 shadow-inner shadow-gold-500/10",
-                      indicator: "bg-gold-400"
-                    };
-                  } else if (p.id === 'urgent') {
-                    priorityStyles = {
-                      border: "border-white/5 hover:border-red-500/20",
-                      activeBg: "bg-red-500/15 text-red-300 border-red-500/40 shadow-inner shadow-red-500/10",
-                      indicator: "bg-red-400 animate-pulse"
-                    };
-                  }
-
-                  const getPriorityLabel = (id: string) => {
-                    if (id === 'low') return 'Standard Queue';
-                    if (id === 'medium') return 'Regular edit';
-                    if (id === 'high') return 'Express priority';
-                    return 'Top priority';
-                  };
-
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setPriority(p.id)}
-                      className={`p-4 rounded-2xl text-left transition-all duration-200 border flex flex-col justify-between h-24 cursor-pointer ${
-                        isActive 
-                          ? priorityStyles.activeBg
-                          : `bg-charcoal-900/30 text-gray-400 ${priorityStyles.border}`
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-xs md:text-sm font-bold uppercase tracking-wider font-display">{p.label}</span>
-                        <span className={`w-2.5 h-2.5 rounded-full ${isActive ? priorityStyles.indicator : 'bg-charcoal-800'}`} />
-                      </div>
-                      <span className="text-[10px] md:text-xs font-mono text-gray-500 leading-snug">
-                        {getPriorityLabel(p.id)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                  <div className="flex items-center space-x-1.5 overflow-hidden w-full">
+                    {isActive && <span className={`w-1.5 h-1.5 rounded-full ${tab.subDot} shrink-0 animate-pulse`} />}
+                    <span className={`text-xs font-display uppercase tracking-wide truncate ${
+                      isActive ? tab.activeText : 'text-gray-300 group-hover:text-white font-medium'
+                    }`}>
+                      {tab.title}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          {/* SECTION 3: FINANCIAL LEDGER SHEET */}
-          <div className="glass-panel p-6 md:p-8 rounded-3xl border border-gold-500/15 space-y-6 shadow-xl transition-all hover:border-gold-500/25">
-            <div className="flex items-center space-x-3 pb-3 border-b border-white/5">
-              <span className="w-7 h-7 rounded-full bg-gold-500/15 text-gold-300 flex items-center justify-center text-xs font-bold font-mono border border-gold-500/25">3</span>
-              <h3 className="text-sm md:text-base font-bold text-white uppercase tracking-wider font-display">Ledger Sheet (Finance)</h3>
-            </div>
-
-            {userRole !== 'studio' ? (
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-mono font-bold text-gray-400 mb-2 uppercase tracking-wider">Total Contract ₹</label>
-                    <input 
-                      type="number" 
-                      value={projectAmount || ''} 
-                      onChange={(e) => setProjectAmount(Number(e.target.value))} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white font-medium focus:outline-none focus:border-gold-500/50 focus:bg-charcoal-900" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono font-bold text-gray-400 mb-2 uppercase tracking-wider">Editor Comp ₹</label>
-                    <input 
-                      type="number" 
-                      value={editorPayment || ''} 
-                      onChange={(e) => setEditorPayment(Number(e.target.value))} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white font-medium focus:outline-none focus:border-gold-500/50 focus:bg-charcoal-900" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono font-bold text-gray-400 mb-2 uppercase tracking-wider">Other Costs ₹</label>
-                    <input 
-                      type="number" 
-                      value={otherExpenses || ''} 
-                      onChange={(e) => setOtherExpenses(Number(e.target.value))} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white font-medium focus:outline-none focus:border-gold-500/50 focus:bg-charcoal-900" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono font-bold text-gray-400 mb-2 uppercase tracking-wider">Advance Paid ₹</label>
-                    <input 
-                      type="number" 
-                      value={advancePayment || ''} 
-                      onChange={(e) => setAdvancePayment(Number(e.target.value))} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white font-medium focus:outline-none focus:border-gold-500/50 focus:bg-charcoal-900" 
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6 p-5 bg-charcoal-900/60 rounded-2xl border border-white/5 text-sm font-mono relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-gold-500/5 rounded-bl-full pointer-events-none" />
-                  <div className="flex flex-col">
-                    <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Collection Due</span>
-                    <strong className="text-lg md:text-xl font-bold mt-1.5 text-gold-400">
-                      ₹{calculatedRemainingBalance.toLocaleString('en-IN')}
-                    </strong>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Est. Net Margin</span>
-                    <strong className={`text-lg md:text-xl font-bold mt-1.5 ${estimatedProfitMargin >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      ₹{estimatedProfitMargin.toLocaleString('en-IN')}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="p-5 bg-charcoal-900/40 border border-white/5 rounded-2xl text-xs md:text-sm font-mono text-gray-500 flex items-center space-x-2">
-                <Lock className="w-4 h-4 shrink-0 text-gold-500/50" />
-                <span>Budget & Finance metrics are encrypted and locked for non-administrative studio accounts.</span>
-              </div>
-            )}
-          </div>
-
-          {/* TOGGLE FOR ADVANCED CONFIGURATION */}
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="w-full py-4 bg-charcoal-900/60 hover:bg-gold-500/10 border border-gold-500/10 hover:border-gold-500/30 text-gold-400 hover:text-gold-300 rounded-xl text-xs md:text-sm font-mono font-bold transition-all flex items-center justify-center space-x-2.5 cursor-pointer shadow-md gold-glow"
-            >
-              <span>{showAdvanced ? "Hide Advanced Settings (Deliverables, Milestones & Backups) ▴" : "Show Advanced Settings (Deliverables, Milestones, Storage & Backups) ▾"}</span>
-            </button>
-          </div>
-
-          <AnimatePresence>
-            {showAdvanced && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="space-y-8 overflow-hidden"
+        {/* ACTIVE TAB CONTENT PANE */}
+        <div className={`glass-panel p-6 md:p-8 rounded-3xl border shadow-2xl bg-charcoal-950/80 backdrop-blur-xl transition-all duration-300 ${
+          activeTab === 'couple' ? 'border-rose-500/25 shadow-rose-500/5' :
+          activeTab === 'crew' ? 'border-sky-500/25 shadow-sky-500/5' :
+          activeTab === 'finance' ? 'border-emerald-500/25 shadow-emerald-500/5' :
+          activeTab === 'deliverables' ? 'border-purple-500/25 shadow-purple-500/5' :
+          activeTab === 'storage' ? 'border-amber-500/25 shadow-amber-500/5' :
+          'border-gold-500/30 shadow-gold-500/5'
+        }`}>
+          <AnimatePresence mode="wait">
+            {activeTab === 'couple' && (
+              <motion.div
+                key="tab-couple"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
               >
-                {/* SECTION 4: DELIVERABLES SELECTION */}
-                <div className="glass-panel p-6 md:p-8 rounded-3xl border border-gold-500/15 space-y-5 shadow-xl">
-                  <div className="flex items-center space-x-3 pb-3 border-b border-white/5">
-                    <span className="w-7 h-7 rounded-full bg-gold-500/15 text-gold-300 flex items-center justify-center text-xs font-bold font-mono border border-gold-500/25">4</span>
-                    <h3 className="text-sm md:text-base font-bold text-white uppercase tracking-wider font-display">Cinematic Deliverables</h3>
-                  </div>
+                <IntakeTabCouple
+                  groomName={groomName}
+                  setGroomName={setGroomName}
+                  brideName={brideName}
+                  setBrideName={setBrideName}
+                  projectName={projectName}
+                  setProjectName={setProjectName}
+                  eventType={eventType}
+                  setEventType={setEventType}
+                  studioId={studioId}
+                  setStudioId={setStudioId}
+                  studios={studios}
+                  userRole={userRole}
+                  clientPhone={clientPhone}
+                  setClientPhone={setClientPhone}
+                  clientEmail={clientEmail}
+                  setClientEmail={setClientEmail}
+                  venue={venue}
+                  setVenue={setVenue}
+                  musicVibe={musicVibe}
+                  setMusicVibe={setMusicVibe}
+                  onClearError={() => setValidationError('')}
+                />
+              </motion.div>
+            )}
 
-                  <span className="text-xs md:text-sm font-semibold text-gray-400 font-mono block mb-1">Select deliverables to produce:</span>
-                  
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {availableFunctions.map((func) => {
-                      const isSelected = selectedFunctions.includes(func);
-                      return (
-                        <div
-                          key={func}
-                          onClick={() => {
-                            setSelectedFunctions(isSelected ? selectedFunctions.filter(f => f !== func) : [...selectedFunctions, func]);
-                            setValidationError('');
-                          }}
-                          className={`flex items-center justify-between p-3.5 px-4 rounded-xl border cursor-pointer select-none transition-all duration-150 ${
-                            isSelected 
-                              ? 'bg-gold-500/15 border-gold-500/30 text-gold-200 font-bold shadow-md shadow-gold-500/5' 
-                              : 'bg-charcoal-900/30 border-white/5 text-gray-400 hover:border-white/10 hover:text-white'
-                          }`}
-                        >
-                          <span className="text-xs md:text-sm truncate font-medium">{func}</span>
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center text-[10px] shrink-0 ml-1.5 ${isSelected ? 'bg-gold-500 border-gold-500 text-charcoal-950 font-bold' : 'border-gray-500'}`}>
-                            {isSelected ? "✓" : "+"}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+            {activeTab === 'crew' && (
+              <motion.div
+                key="tab-crew"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <IntakeTabCrew
+                  shootDate={shootDate}
+                  setShootDate={setShootDate}
+                  deliveryDate={deliveryDate}
+                  setDeliveryDate={setDeliveryDate}
+                  assignedEditorId={assignedEditorId}
+                  setAssignedEditorId={setAssignedEditorId}
+                  status={status}
+                  setStatus={setStatus}
+                  priority={priority}
+                  setPriority={setPriority}
+                  isSplitProject={isSplitProject}
+                  setIsSplitProject={setIsSplitProject}
+                  secondEditorId={secondEditorId}
+                  setSecondEditorId={setSecondEditorId}
+                  splitPreset={splitPreset}
+                  setSplitPreset={setSplitPreset}
+                  firstEditorShare={firstEditorShare}
+                  setFirstEditorShare={setFirstEditorShare}
+                  secondEditorShare={secondEditorShare}
+                  setSecondEditorShare={setSecondEditorShare}
+                  editorPayment={editorPayment}
+                  editors={editors}
+                  projects={projects}
+                  userRole={userRole}
+                  workflowStages={WORKFLOW_STAGES}
+                  priorities={PRIORITIES}
+                  onClearError={() => setValidationError('')}
+                />
+              </motion.div>
+            )}
 
-                  <div className="flex items-center bg-charcoal-900/40 rounded-xl border border-white/10 p-1.5 pl-4 focus-within:border-gold-500/40 transition-colors">
-                    <input 
-                      type="text" 
-                      placeholder="Add customized deliverable..." 
-                      value={customFunctionInput} 
-                      onChange={(e) => setCustomFunctionInput(e.target.value)} 
-                      className="flex-1 bg-transparent border-0 outline-none text-xs md:text-sm text-white py-1.5 placeholder-gray-600" 
-                      onKeyDown={(e) => { 
-                        if (e.key === 'Enter') { 
-                          e.preventDefault(); 
-                          e.stopPropagation();
-                          handleAddCustomFunction(); 
-                        } 
-                      }} 
-                    />
-                    <button 
-                      type="button" 
-                      onClick={handleAddCustomFunction} 
-                      className="px-4 py-2 bg-charcoal-800 hover:bg-gold-500 hover:text-charcoal-950 border border-white/10 hover:border-gold-500 text-gray-200 text-xs md:text-sm font-bold rounded-lg cursor-pointer transition-all shrink-0"
-                    >
-                      Add
-                    </button>
-                  </div>
+            {activeTab === 'finance' && (
+              <motion.div
+                key="tab-finance"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <IntakeTabFinance
+                  projectAmount={projectAmount}
+                  setProjectAmount={setProjectAmount}
+                  editorPayment={editorPayment}
+                  setEditorPayment={setEditorPayment}
+                  otherExpenses={otherExpenses}
+                  setOtherExpenses={setOtherExpenses}
+                  advancePayment={advancePayment}
+                  setAdvancePayment={setAdvancePayment}
+                  paymentMode={paymentMode}
+                  setPaymentMode={setPaymentMode}
+                  paymentDueDate={paymentDueDate}
+                  setPaymentDueDate={setPaymentDueDate}
+                  userRole={userRole}
+                  calculatedRemainingBalance={calculatedRemainingBalance}
+                  estimatedProfitMargin={estimatedProfitMargin}
+                />
+              </motion.div>
+            )}
 
-                  <div className="pt-2">
-                    <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">Special Directions / Production Notes</label>
-                    <textarea 
-                      rows={4}
-                      placeholder="Enter client specifications, reference songs, video references, editing guidelines..." 
-                      value={notes} 
-                      onChange={(e) => setNotes(e.target.value)} 
-                      className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-3 text-xs md:text-sm text-white placeholder-gray-600 resize-none focus:outline-none focus:border-gold-500/50 focus:bg-charcoal-900 transition-all" 
-                    />
-                  </div>
-                </div>
+            {activeTab === 'deliverables' && (
+              <motion.div
+                key="tab-deliverables"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <IntakeTabDeliverables
+                  availableFunctions={availableFunctions}
+                  selectedFunctions={selectedFunctions}
+                  setSelectedFunctions={setSelectedFunctions}
+                  customFunctionInput={customFunctionInput}
+                  setCustomFunctionInput={setCustomFunctionInput}
+                  handleAddCustomFunction={handleAddCustomFunction}
+                  customMilestones={customMilestones}
+                  setCustomMilestones={setCustomMilestones}
+                  newMilestoneInput={newMilestoneInput}
+                  setNewMilestoneInput={setNewMilestoneInput}
+                  notes={notes}
+                  setNotes={setNotes}
+                  onClearError={() => setValidationError('')}
+                />
+              </motion.div>
+            )}
 
-                {/* SECTION 5: CUSTOM MILESTONE ROADMAP */}
-                <div className="glass-panel p-6 md:p-8 rounded-3xl border border-gold-500/15 space-y-5 shadow-xl">
-                  <div className="flex items-center space-x-3 pb-3 border-b border-white/5">
-                    <span className="w-7 h-7 rounded-full bg-gold-500/15 text-gold-300 flex items-center justify-center text-xs font-bold font-mono border border-gold-500/25">5</span>
-                    <h3 className="text-sm md:text-base font-bold text-white uppercase tracking-wider font-display">Custom Milestone Checklist</h3>
-                  </div>
+            {activeTab === 'storage' && (
+              <motion.div
+                key="tab-storage"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <IntakeTabStorage
+                  hardDiskName={hardDiskName}
+                  setHardDiskName={setHardDiskName}
+                  dataSize={dataSize}
+                  setDataSize={setDataSize}
+                  backupStatus={backupStatus}
+                  setBackupStatus={setBackupStatus}
+                  location={location}
+                  setLocation={setLocation}
+                  googleDriveLink={googleDriveLink}
+                  setGoogleDriveLink={setGoogleDriveLink}
+                  rawDataFolder={rawDataFolder}
+                  setRawDataFolder={setRawDataFolder}
+                  deliveryFolder={deliveryFolder}
+                  setDeliveryFolder={setDeliveryFolder}
+                  finalExportFolder={finalExportFolder}
+                  setFinalExportFolder={setFinalExportFolder}
+                />
+              </motion.div>
+            )}
 
-                  <p className="text-xs text-gray-400 leading-relaxed font-mono">
-                    Initialize customized tracking milestones for this wedding film. You can toggle initial stages, append custom steps, or prune unnecessary steps.
-                  </p>
-
-                  <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-                    {customMilestones.map((m) => (
-                      <div 
-                        key={m.id} 
-                        className="flex items-center justify-between p-3.5 px-4 rounded-xl border border-white/5 bg-charcoal-900/40 hover:bg-charcoal-900/60 transition-all text-xs md:text-sm text-white"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <input 
-                            type="checkbox" 
-                            checked={m.completed} 
-                            onChange={() => {
-                              setCustomMilestones(customMilestones.map(item => item.id === m.id ? { ...item, completed: !item.completed } : item));
-                            }}
-                            className="w-4 h-4 rounded border-white/10 text-gold-500 bg-charcoal-950 focus:ring-0 cursor-pointer focus:border-gold-500"
-                          />
-                          <span className={`${m.completed ? 'line-through text-gray-500 font-normal' : 'font-semibold text-gray-200'}`}>
-                            {m.label}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCustomMilestones(customMilestones.filter(item => item.id !== m.id));
-                          }}
-                          className="text-[11px] text-red-400 hover:text-red-300 font-semibold font-mono hover:underline"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center bg-charcoal-900/40 rounded-xl border border-white/10 p-1.5 pl-4 focus-within:border-gold-500/40 transition-colors">
-                    <input 
-                      type="text" 
-                      placeholder="Add custom milestone step (e.g. Pre-Teaser Approved)..." 
-                      value={newMilestoneInput} 
-                      onChange={(e) => setNewMilestoneInput(e.target.value)} 
-                      className="flex-1 bg-transparent border-0 outline-none text-xs md:text-sm text-white py-1.5 placeholder-gray-600" 
-                      onKeyDown={(e) => { 
-                        if (e.key === 'Enter') { 
-                          e.preventDefault(); 
-                          e.stopPropagation();
-                          if (newMilestoneInput.trim()) {
-                            setCustomMilestones([
-                              ...customMilestones,
-                              {
-                                id: `milestone-${Date.now()}`,
-                                label: newMilestoneInput.trim(),
-                                completed: false
-                              }
-                            ]);
-                            setNewMilestoneInput('');
-                          }
-                        } 
-                      }} 
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => {
-                        if (newMilestoneInput.trim()) {
-                          setCustomMilestones([
-                            ...customMilestones,
-                            {
-                              id: `milestone-${Date.now()}`,
-                              label: newMilestoneInput.trim(),
-                              completed: false
-                            }
-                          ]);
-                          setNewMilestoneInput('');
-                        }
-                      }} 
-                      className="px-4 py-2 bg-charcoal-800 hover:bg-gold-500 hover:text-charcoal-950 border border-white/10 hover:border-gold-500 text-gray-200 text-xs md:text-sm font-bold rounded-lg cursor-pointer transition-all shrink-0"
-                    >
-                      Add Step
-                    </button>
-                  </div>
-                </div>
-
-                {/* SECTION 6: PHYSICAL STORAGE & ASSET PATHS */}
-                <div className="glass-panel p-6 md:p-8 rounded-3xl border border-gold-500/15 space-y-5 shadow-xl">
-                  <div className="flex items-center space-x-3 pb-3 border-b border-white/5">
-                    <span className="w-7 h-7 rounded-full bg-gold-500/15 text-gold-300 flex items-center justify-center text-xs font-bold font-mono border border-gold-500/25">6</span>
-                    <h3 className="text-sm md:text-base font-bold text-white uppercase tracking-wider font-display">Physical Storage & Backup Specs</h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                    <div>
-                      <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">HDD Reference Name</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. WD BLACK 4TB - #08" 
-                        value={hardDiskName} 
-                        onChange={(e) => setHardDiskName(e.target.value)} 
-                        className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-3 text-xs md:text-sm text-white focus:outline-none focus:border-gold-500/50 focus:bg-charcoal-900" 
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">Raw Footage Size</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. 1.8 TB" 
-                        value={dataSize} 
-                        onChange={(e) => setDataSize(e.target.value)} 
-                        className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-3 text-xs md:text-sm text-white focus:outline-none focus:border-gold-500/50 focus:bg-charcoal-900" 
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">Backup Status</label>
-                      <select 
-                        value={backupStatus} 
-                        onChange={(e) => setBackupStatus(e.target.value as 'pending' | 'backed_up')} 
-                        className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-4 py-3 text-xs md:text-sm text-white focus:outline-none focus:border-gold-500/50 cursor-pointer"
-                      >
-                        <option value="pending" className="bg-charcoal-950">⏳ Pending Backup</option>
-                        <option value="backed_up" className="bg-charcoal-950">✅ Backed Up Safely</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 pt-2">
-                    <div>
-                      <label className="block text-xs md:text-sm font-semibold text-gray-400 mb-2 font-mono uppercase tracking-wider">Google Drive Cloud Link</label>
-                      <div className="relative">
-                        <Link2 className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-500" />
-                        <input 
-                          type="url" 
-                          placeholder="https://drive.google.com/drive/folders/..." 
-                          value={googleDriveLink} 
-                          onChange={(e) => setGoogleDriveLink(e.target.value)} 
-                          className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs md:text-sm text-white focus:outline-none focus:border-gold-500/50 focus:bg-charcoal-900 placeholder-gray-600" 
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs text-gray-500 font-semibold mb-1.5 font-mono uppercase tracking-wider">Raw Folder Name</label>
-                        <input 
-                          type="text" 
-                          placeholder="Raw_Footage" 
-                          value={rawDataFolder} 
-                          onChange={(e) => setRawDataFolder(e.target.value)} 
-                          className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-gold-500/50" 
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 font-semibold mb-1.5 font-mono uppercase tracking-wider">Deliveries Folder</label>
-                        <input 
-                          type="text" 
-                          placeholder="Edited_Deliverables" 
-                          value={deliveryFolder} 
-                          onChange={(e) => setDeliveryFolder(e.target.value)} 
-                          className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-gold-500/50" 
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 font-semibold mb-1.5 font-mono uppercase tracking-wider">Final Archive Folder</label>
-                        <input 
-                          type="text" 
-                          placeholder="Final_Project_Archives" 
-                          value={finalExportFolder} 
-                          onChange={(e) => setFinalExportFolder(e.target.value)} 
-                          className="w-full bg-charcoal-900/60 border border-white/10 rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-gold-500/50" 
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            {activeTab === 'preview' && (
+              <motion.div
+                key="tab-preview"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <IntakeTabPreview
+                  couplePhoto={couplePhoto}
+                  setCouplePhoto={setCouplePhoto}
+                  defaultCovers={DEFAULT_COVERS}
+                  projectName={projectName}
+                  groomName={groomName}
+                  brideName={brideName}
+                  eventType={eventType}
+                  studioId={studioId}
+                  studios={studios}
+                  assignedEditorId={assignedEditorId}
+                  editors={editors}
+                  isSplitProject={isSplitProject}
+                  secondEditorId={secondEditorId}
+                  firstEditorShare={firstEditorShare}
+                  secondEditorShare={secondEditorShare}
+                  shootDate={shootDate}
+                  deliveryDate={deliveryDate}
+                  status={status}
+                  priority={priority}
+                  selectedFunctions={selectedFunctions}
+                  customMilestones={customMilestones}
+                  projectAmount={projectAmount}
+                  editorPayment={editorPayment}
+                  advancePayment={advancePayment}
+                  calculatedRemainingBalance={calculatedRemainingBalance}
+                  estimatedProfitMargin={estimatedProfitMargin}
+                  hardDiskName={hardDiskName}
+                  dataSize={dataSize}
+                  location={location}
+                  venue={venue}
+                  clientPhone={clientPhone}
+                  userRole={userRole}
+                  workflowStages={WORKFLOW_STAGES}
+                  compressImage={compressImage}
+                  onResetForm={resetForm}
+                  onOpenSaveModal={() => setShowSaveTemplateModal(true)}
+                  isSubmitting={isSubmitting}
+                />
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* REGISTER ACTION TRIGGERS */}
-          <div className="flex items-center justify-end space-x-4 pt-8 border-t border-white/10">
-            <button
-              type="button"
-              onClick={resetForm}
-              className="px-6 py-3.5 bg-charcoal-900/60 hover:bg-charcoal-800 border border-white/10 text-gray-300 hover:text-white rounded-xl text-xs md:text-sm font-bold transition-all cursor-pointer"
-            >
-              Reset Form
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-8 py-3.5 bg-gradient-to-r from-gold-600 via-gold-500 to-gold-600 hover:from-gold-500 hover:to-gold-400 text-charcoal-950 font-bold text-xs md:text-sm rounded-xl shadow-md gold-glow hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 transition-all cursor-pointer flex items-center space-x-2.5 uppercase tracking-wider"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-charcoal-950 border-t-transparent rounded-full animate-spin" />
-                  <span>Registering...</span>
-                </>
+          {/* STEPPER NAVIGATION FOOTER BAR */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 mt-8 border-t border-white/10">
+            <div>
+              {['couple', 'crew', 'finance', 'deliverables', 'storage', 'preview'].indexOf(activeTab) > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const order = ['couple', 'crew', 'finance', 'deliverables', 'storage', 'preview'];
+                    const idx = order.indexOf(activeTab);
+                    if (idx > 0) {
+                      setActiveTab(order[idx - 1] as any);
+                      window.scrollTo({ top: 400, behavior: 'smooth' });
+                    }
+                  }}
+                  className="px-5 py-2.5 bg-charcoal-900 hover:bg-charcoal-800 border border-white/10 text-gray-300 hover:text-white rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center space-x-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Previous Step</span>
+                </button>
               ) : (
-                <>
-                  <Heart className="w-4.5 h-4.5 text-charcoal-950" />
-                  <span>Register Wedding Project</span>
-                </>
+                <span className="text-xs text-gray-500 font-mono">Step 1 of 6</span>
               )}
-            </button>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: INTERACTIVE PREVIEW & ASSETS (5 Cols) */}
-        <div className="lg:col-span-5 space-y-8 lg:sticky lg:top-8">
-          
-          {/* INTERACTIVE CINE-CARD PREVIEW */}
-          <div className="glass-panel p-6 md:p-8 rounded-3xl border border-gold-500/15 space-y-5 shadow-xl transition-all hover:border-gold-500/25">
-            <div className="flex items-center justify-between pb-3 border-b border-white/5">
-              <span className="text-[10px] font-mono text-gold-300 bg-gold-500/10 px-3 py-1 rounded-full uppercase border border-gold-500/25 font-bold tracking-wider gold-glow">
-                Live Spec Card Preview
-              </span>
-              <span className="text-[10px] text-gray-500 font-mono font-bold tracking-widest">THE FRAME CUT</span>
             </div>
 
-            {/* Simulated interactive project card */}
-            <div className="p-2.5 bg-charcoal-950/80 rounded-[28px] border border-gold-500/20 shadow-lg max-w-sm mx-auto w-full group overflow-hidden transition-all hover:border-gold-500/40">
-              <div className="h-48 rounded-[22px] overflow-hidden relative">
-                <img 
-                  src={couplePhoto || DEFAULT_COVERS[0].url} 
-                  alt="Live Preview" 
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-charcoal-950 via-charcoal-950/30 to-transparent" />
-                
-                {/* ID Badge */}
-                <div className="absolute top-4 left-4 flex space-x-1.5">
-                  <span className="text-[10px] font-mono px-2.5 py-1 bg-charcoal-950/95 text-gold-300 rounded border border-gold-500/10">
-                    PRJ-2026-AUTO
-                  </span>
-                  <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded uppercase font-bold flex items-center ${
-                    priority === 'urgent' ? 'bg-red-500/90 text-white' :
-                    priority === 'high' ? 'bg-amber-500 text-charcoal-950 font-bold' :
-                    priority === 'medium' ? 'bg-sky-500/90 text-white' : 'bg-gray-600 text-white'
-                  }`}>
-                    {priority}
-                  </span>
-                </div>
-
-                <div className="absolute bottom-4 left-4">
-                  <span className="text-[10px] font-mono px-2.5 py-1 bg-charcoal-950/90 text-gold-200 rounded uppercase font-bold border border-gold-500/10">
-                    {WORKFLOW_STAGES.find(s => s.id === status)?.label || 'Data Received'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-5 space-y-4">
-                <div>
-                  <h4 className="text-base font-bold text-white truncate leading-tight font-display">
-                    {projectName.trim() || 'Couple Film Project Name'}
-                  </h4>
-                  <p className="text-xs text-gold-400 font-mono font-bold tracking-wider uppercase mt-1">
-                    {(groomName.trim() || brideName.trim()) ? `💍 ${groomName || 'Groom'} & ${brideName || 'Bride'}` : 'Groom & Bride Names'}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs text-gray-400 font-mono">
-                  <div className="p-2.5 bg-charcoal-900/60 rounded-xl border border-white/5">
-                    <span className="text-gray-500 text-[9px] block uppercase font-bold">Partner Studio</span>
-                    <span className="text-gray-200 font-bold truncate block mt-0.5">
-                      {studios.find(s => s.id === studioId)?.name || 'Direct Client'}
-                    </span>
-                  </div>
-                  <div className="p-2.5 bg-charcoal-900/60 rounded-xl border border-white/5">
-                    <span className="text-gray-500 text-[9px] block uppercase font-bold">Lead Editor</span>
-                    <span className="text-gray-200 font-bold truncate block mt-0.5">
-                      {editors.find(e => e.id === assignedEditorId)?.name || 'Unassigned'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="border-t border-white/5 pt-4 flex justify-between text-xs text-gray-400 font-mono">
-                  <span className="flex items-center space-x-1.5">
-                    <Calendar className="w-4 h-4 text-gray-500" />
-                    <span className="font-semibold text-gray-300">{deliveryDate || 'YYYY-MM-DD'}</span>
-                  </span>
-                  <span className="font-bold text-gold-400">{selectedFunctions.length} Deliverables</span>
-                </div>
-              </div>
+            <div className="flex items-center space-x-3">
+              {activeTab !== 'preview' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const order = ['couple', 'crew', 'finance', 'deliverables', 'storage', 'preview'];
+                    const idx = order.indexOf(activeTab);
+                    if (activeTab === 'couple' && (!groomName.trim() || !brideName.trim() || !projectName.trim())) {
+                      setValidationError('Please provide Groom Name, Bride Name and Project Title before proceeding.');
+                      return;
+                    }
+                    if (activeTab === 'crew' && (!shootDate || !deliveryDate)) {
+                      setValidationError('Please provide both Shoot Date and Delivery Deadline before proceeding.');
+                      return;
+                    }
+                    setValidationError('');
+                    if (idx < order.length - 1) {
+                      setActiveTab(order[idx + 1] as any);
+                      window.scrollTo({ top: 400, behavior: 'smooth' });
+                    }
+                  }}
+                  className="px-6 py-3 bg-gradient-to-r from-gold-500 to-gold-400 text-charcoal-950 font-bold text-xs rounded-xl shadow-lg gold-glow hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center space-x-2 uppercase tracking-wider font-display"
+                >
+                  <span>Continue to Next Step</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-8 py-3.5 bg-gradient-to-r from-gold-600 via-gold-500 to-gold-600 hover:from-gold-500 hover:to-gold-400 text-charcoal-950 font-bold text-xs md:text-sm rounded-xl shadow-xl gold-glow hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center space-x-2.5 uppercase tracking-wider font-display"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-charcoal-950 border-t-transparent rounded-full animate-spin" />
+                      <span>Registering Project...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Heart className="w-4.5 h-4.5 text-charcoal-950 fill-charcoal-950" />
+                      <span>{editingProject ? 'Update Registered Project' : 'Register Wedding Project'}</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
-          </div>
-
-          {/* PHOTO MANAGER / PRESETS FOR COVER */}
-          <div className="glass-panel p-6 md:p-8 rounded-3xl border border-gold-500/15 space-y-5 shadow-xl transition-all hover:border-gold-500/25">
-            <div className="flex items-center justify-between pb-3 border-b border-white/5">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider font-display">Couple Cover Settings</h3>
-              <span className="text-xs text-gray-500 font-mono">Presets & Upload</span>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <div className="w-24 h-24 shrink-0 rounded-2xl bg-charcoal-900 border border-white/10 overflow-hidden relative group">
-                {couplePhoto ? (
-                  <>
-                    <img src={couplePhoto} alt="Upload thumb" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    <button
-                      type="button"
-                      onClick={() => setCouplePhoto('')}
-                      className="absolute inset-0 bg-charcoal-950/90 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs text-red-400 font-bold font-mono cursor-pointer"
-                    >
-                      Delete
-                    </button>
-                  </>
-                ) : (
-                  <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer p-2 hover:bg-charcoal-800 transition-colors">
-                    <Upload className="w-5 h-5 text-gray-500" />
-                    <span className="text-[9px] text-gray-400 text-center font-mono mt-1.5 font-bold">CHOOSE</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = async () => {
-                            const originalBase64 = reader.result as string;
-                            const compressed = await compressImage(originalBase64);
-                            setCouplePhoto(compressed);
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
-                  </label>
-                )}
-              </div>
-
-              <div className="flex-1 space-y-3">
-                <p className="text-xs text-gray-400 leading-relaxed font-mono">
-                  Choose from our premium royal layout presets or upload a custom JPEG cover photo:
-                </p>
-                <div className="grid grid-cols-4 gap-2">
-                  {DEFAULT_COVERS.map((preset) => (
-                    <button 
-                      key={preset.name} 
-                      type="button" 
-                      onClick={() => setCouplePhoto(preset.url)} 
-                      className={`relative h-10 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-gold-500/20 transition-all ${couplePhoto === preset.url ? 'ring-2 ring-gold-500' : 'border border-white/10'}`}
-                      title={preset.name}
-                    >
-                      <img src={preset.url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-gray-400 font-mono uppercase tracking-wider">Couple Cover URL Link</label>
-              <input 
-                type="text" 
-                placeholder="Or paste direct high-resolution web URL..." 
-                value={couplePhoto} 
-                onChange={(e) => setCouplePhoto(e.target.value)} 
-                className="w-full bg-charcoal-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-gold-500/50 font-mono placeholder-gray-600" 
-              />
-            </div>
-          </div>
-
-          {/* DYNAMIC REGISTRY INFO */}
-          <div className="p-6 bg-charcoal-900/60 rounded-3xl border border-white/5 text-xs md:text-sm text-gray-400 leading-relaxed space-y-3 font-mono shadow-md relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-gold-500/[0.02] rounded-bl-full pointer-events-none" />
-            <div className="flex items-center space-x-2 text-gold-300 text-xs md:text-sm font-bold font-sans uppercase">
-              <Info className="w-4 h-4 text-gold-400 shrink-0" />
-              <span>Cine-Registration Standard</span>
-            </div>
-            <p>
-              Once registered, the project is live on <strong className="text-white">Workflow Boards</strong>, <strong className="text-white">Spreadsheets</strong>, and <strong className="text-white">Calendars</strong>.
-            </p>
-            <p>
-              Editors receive notifications immediately of their assigned sequences. Storage codes help track physical backups across backup locations instantly.
-            </p>
           </div>
         </div>
       </form>
@@ -1887,9 +1640,12 @@ export default function RegistryView({
                   type="button"
                   onClick={() => {
                     setEditingProject(proj);
-                    setProjectName(proj.coupleName || '');
+                    setProjectName(proj.projectName || proj.coupleName || '');
                     setBrideName(proj.brideName || '');
                     setGroomName(proj.groomName || '');
+                    setClientPhone(proj.clientPhone || '');
+                    setClientEmail(proj.clientEmail || '');
+                    setVenue(proj.venue || '');
                     setEventType(proj.eventType || 'Wedding Film');
                     setStudioId(proj.studioId || '');
                     setShootDate(proj.shootDate || '');
@@ -1899,6 +1655,28 @@ export default function RegistryView({
                     setPriority(proj.priority || 'medium');
                     setCouplePhoto(proj.couplePhoto || '');
                     setNotes(proj.notes || '');
+                    setProjectAmount(proj.projectAmount || 0);
+                    setEditorPayment(proj.editorPayment || 0);
+                    setOtherExpenses(proj.otherExpenses || 0);
+                    setAdvancePayment(proj.advancePayment || 0);
+                    setPaymentMode(proj.paymentMode || 'UPI');
+                    setPaymentDueDate(proj.paymentDueDate || '');
+                    setHardDiskName(proj.hardDiskName || '');
+                    setDataSize(proj.dataSize || '');
+                    setLocation(proj.location || '');
+                    setBackupStatus(proj.backupStatus || 'pending');
+                    setGoogleDriveLink(proj.googleDriveLink || '');
+                    setRawDataFolder(proj.rawDataFolder || '');
+                    setDeliveryFolder(proj.deliveryFolder || '');
+                    setFinalExportFolder(proj.finalExportFolder || '');
+                    setIsSplitProject(!!proj.isSplitProject);
+                    setSecondEditorId(proj.secondEditorId || '');
+                    setFirstEditorShare(proj.firstEditorShare || 0);
+                    setSecondEditorShare(proj.secondEditorShare || 0);
+                    if (proj.customMilestones && proj.customMilestones.length > 0) {
+                      setCustomMilestones(proj.customMilestones);
+                    }
+                    setActiveTab('couple');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
                   className="px-3 py-1.5 rounded-lg bg-charcoal-800 hover:bg-gold-500/20 text-gold-300 text-xs font-mono font-bold flex items-center gap-1 cursor-pointer transition-colors"
@@ -1949,181 +1727,6 @@ export default function RegistryView({
                 className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-xs font-mono shadow-lg cursor-pointer"
               >
                 Confirm Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* BROWSE TEMPLATE BLUEPRINTS MODAL */}
-      {showTemplateModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 md:p-6 overflow-y-auto">
-          <div className="bg-charcoal-900 border border-gold-500/25 rounded-3xl w-full max-w-4xl p-6 md:p-8 space-y-6 shadow-2xl relative my-auto max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4 shrink-0">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-gold-500/10 border border-gold-500/30 flex items-center justify-center text-gold-400 font-bold gold-glow">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white font-display">Project Blueprint Templates Library</h3>
-                  <p className="text-xs text-gray-400 font-mono mt-0.5">Select a blueprint to load milestones, deliverables, priority & financial presets instantly.</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowTemplateModal(false)}
-                className="p-2 rounded-xl bg-charcoal-800 hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto flex-1 pr-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {templates.map((tpl) => {
-                const isSelected = selectedTemplateId === tpl.id;
-                return (
-                  <div
-                    key={tpl.id}
-                    className={`p-5 rounded-2xl border flex flex-col justify-between space-y-4 transition-all ${
-                      isSelected
-                        ? 'bg-gold-500/[0.08] border-gold-500/50 shadow-lg gold-glow'
-                        : 'bg-charcoal-800/60 border-white/10 hover:border-gold-500/30'
-                    }`}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-gold-400 block">
-                            {tpl.eventType}
-                          </span>
-                          <h4 className="text-base font-bold text-white font-display mt-0.5">{tpl.name}</h4>
-                        </div>
-                        <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full uppercase border ${
-                          tpl.isDefault
-                            ? 'bg-gold-500/15 text-gold-300 border-gold-500/30'
-                            : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
-                        }`}>
-                          {tpl.isDefault ? 'Preset Blueprint' : 'Custom Saved'}
-                        </span>
-                      </div>
-
-                      {tpl.description && (
-                        <p className="text-xs text-gray-300 font-mono leading-relaxed">
-                          {tpl.description}
-                        </p>
-                      )}
-
-                      {/* Deliverables tags */}
-                      {tpl.deliverables && tpl.deliverables.length > 0 && (
-                        <div className="space-y-1 pt-1">
-                          <span className="text-[10px] font-mono uppercase text-gray-400 font-bold block">Deliverables Package:</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {tpl.deliverables.map((del, dIdx) => (
-                              <span key={dIdx} className="text-[10px] font-mono px-2 py-0.5 rounded bg-charcoal-900 border border-white/10 text-gray-200">
-                                {del}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Milestones count */}
-                      {tpl.milestones && tpl.milestones.length > 0 && (
-                        <div className="space-y-1 pt-1">
-                          <span className="text-[10px] font-mono uppercase text-gray-400 font-bold flex items-center justify-between">
-                            <span>Workflow Milestones ({tpl.milestones.length}):</span>
-                            <span className="text-gold-400 font-bold uppercase">{tpl.priority} Priority</span>
-                          </span>
-                          <div className="p-2.5 bg-charcoal-900/80 rounded-xl border border-white/5 text-[11px] font-mono text-gray-400 space-y-1 max-h-24 overflow-y-auto">
-                            {tpl.milestones.map((m, mIdx) => (
-                              <div key={mIdx} className="flex items-center space-x-1.5 truncate">
-                                <span className="text-gold-400 font-bold">•</span>
-                                <span className="truncate">{m}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Amounts if present */}
-                      {(tpl.defaultProjectAmount || tpl.defaultEditorPayment) && (
-                        <div className="flex items-center space-x-4 text-xs font-mono pt-1 text-gray-300">
-                          {tpl.defaultProjectAmount && (
-                            <div>
-                              <span className="text-[9px] uppercase text-gray-400 font-bold block">Client Budget:</span>
-                              <span className="text-gold-300 font-bold">₹{tpl.defaultProjectAmount.toLocaleString('en-IN')}</span>
-                            </div>
-                          )}
-                          {tpl.defaultEditorPayment && (
-                            <div>
-                              <span className="text-[9px] uppercase text-gray-400 font-bold block">Editor Budget:</span>
-                              <span className="text-emerald-400 font-bold">₹{tpl.defaultEditorPayment.toLocaleString('en-IN')}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-white/10 pt-3 gap-2 shrink-0">
-                      {!tpl.isDefault && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTemplate(tpl.id)}
-                          className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-mono font-bold flex items-center space-x-1 cursor-pointer transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Delete</span>
-                        </button>
-                      )}
-                      
-                      <div className="flex items-center space-x-2 ml-auto">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenPreviewTemplate(tpl)}
-                          className="px-3 py-2 rounded-xl bg-charcoal-900 hover:bg-charcoal-800 border border-white/10 text-gray-300 hover:text-white text-xs font-mono font-bold flex items-center space-x-1.5 cursor-pointer transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-gold-400" />
-                          <span>Preview Breakdown</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => applyTemplate(tpl)}
-                          className={`px-4 py-2 rounded-xl font-mono text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer shadow-md ${
-                            isSelected
-                              ? 'bg-gold-500 text-charcoal-950 hover:bg-gold-400 gold-glow'
-                              : 'bg-gold-500/20 hover:bg-gold-500/30 text-gold-300 hover:text-white border border-gold-500/30'
-                          }`}
-                        >
-                          <Check className="w-4 h-4" />
-                          <span>{isSelected ? 'Applied' : 'Apply Blueprint'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="border-t border-white/10 pt-4 flex justify-between items-center shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTemplateModal(false);
-                  setShowSaveTemplateModal(true);
-                }}
-                className="px-4 py-2 bg-charcoal-800 hover:bg-charcoal-700 text-gold-300 border border-gold-500/20 rounded-xl text-xs font-mono font-bold flex items-center space-x-2 cursor-pointer transition-colors"
-              >
-                <Bookmark className="w-4 h-4" />
-                <span>Save Current Form Setup as Blueprint</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowTemplateModal(false)}
-                className="px-5 py-2 bg-charcoal-800 hover:bg-charcoal-700 text-white rounded-xl text-xs font-mono font-bold cursor-pointer"
-              >
-                Close Library
               </button>
             </div>
           </div>
@@ -2230,6 +1833,45 @@ export default function RegistryView({
             </div>
           </div>
         </div>
+      )}
+
+      {/* FULL BLUEPRINT REPOSITORY MODAL */}
+      {showTemplateLibrary && (
+        <TemplateLibraryModal
+          templates={templates}
+          editors={editors}
+          selectedTemplateId={selectedTemplateId}
+          onApplyTemplate={(tpl) => applyTemplate(tpl)}
+          onEditTemplate={(tpl) => {
+            setEditingTemplateForBuilder(tpl);
+            setShowTemplateBuilder(true);
+            setShowTemplateLibrary(false);
+          }}
+          onDeleteTemplate={(tplId) => handleDeleteBlueprint(tplId)}
+          onCreateNewTemplate={() => {
+            setEditingTemplateForBuilder(null);
+            setShowTemplateBuilder(true);
+            setShowTemplateLibrary(false);
+          }}
+          onClose={() => setShowTemplateLibrary(false)}
+        />
+      )}
+
+      {/* BLUEPRINT BUILDER / EDITOR MODAL */}
+      {showTemplateBuilder && (
+        <TemplateBuilderModal
+          initialTemplate={editingTemplateForBuilder}
+          editors={editors}
+          onSave={async (tpl) => {
+            await handleSaveBlueprint(tpl);
+            setShowTemplateBuilder(false);
+            setEditingTemplateForBuilder(null);
+          }}
+          onClose={() => {
+            setShowTemplateBuilder(false);
+            setEditingTemplateForBuilder(null);
+          }}
+        />
       )}
 
       {/* INTERACTIVE TEMPLATE PREVIEW MODAL */}
@@ -2355,7 +1997,36 @@ export default function RegistryView({
                 </div>
               </div>
 
-              {/* SECTION 2: DELIVERABLES PACKAGE */}
+              {/* SECTION 2: STANDARD WORKFLOW AUTO-TASKS */}
+              {previewTemplate.tasks && previewTemplate.tasks.length > 0 && (
+                <div className="space-y-2.5">
+                  <h4 className="text-xs font-mono font-bold uppercase text-gold-400 tracking-wider flex items-center space-x-2">
+                    <Clock className="w-4 h-4 text-gold-400" />
+                    <span>Auto-Generated Workflow Tasks ({previewTemplate.tasks.length})</span>
+                  </h4>
+
+                  <div className="space-y-2 p-3.5 bg-charcoal-950/80 rounded-2xl border border-white/10">
+                    {previewTemplate.tasks.map((tsk, tIdx) => (
+                      <div key={tsk.id || tIdx} className="p-3 bg-charcoal-900 rounded-xl border border-white/5 flex items-start justify-between gap-3 text-xs font-mono">
+                        <div className="flex items-start space-x-3">
+                          <span className="w-5 h-5 rounded bg-gold-500/20 text-gold-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                            {tIdx + 1}
+                          </span>
+                          <div>
+                            <span className="text-white font-bold block">{tsk.title}</span>
+                            {tsk.description && <p className="text-[11px] text-gray-400 mt-0.5">{tsk.description}</p>}
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/20 shrink-0">
+                          +{tsk.daysFromShoot ?? 5}d
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 3: DELIVERABLES PACKAGE */}
               <div className="space-y-2.5">
                 <h4 className="text-xs font-mono font-bold uppercase text-gold-400 tracking-wider flex items-center space-x-2">
                   <Film className="w-4 h-4 text-gold-400" />

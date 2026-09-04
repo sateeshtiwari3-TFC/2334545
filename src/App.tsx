@@ -7,8 +7,10 @@ import {
   updateDoc, 
   doc, 
   deleteDoc, 
-  setDoc,
-  getDoc,
+  setDoc, 
+  getDoc, 
+  getDocs,
+  writeBatch,
   serverTimestamp 
 } from 'firebase/firestore';
 import { db, seedDatabaseIfEmpty } from './firebase';
@@ -23,7 +25,11 @@ import {
   Revision, 
   PaymentHistory,
   UserProfile,
-  UserRole
+  UserRole,
+  AuditLogType,
+  AuditLogCategory,
+  RecycleBinItem,
+  RecycleBinItemType
 } from './types';
 
 // Parallax Design Background
@@ -46,7 +52,13 @@ import GeminiAIView from './components/GeminiAIView';
 import InvoiceView from './components/InvoiceView';
 import FinancialOverviewView from './components/FinancialOverviewView';
 import PaymentsLedgerView from './components/PaymentsLedgerView';
+import AuditLogView from './components/AuditLogView';
+import RecycleBinView from './components/RecycleBinView';
 import { useDeadlineRunner } from './hooks/useDeadlineRunner';
+import { useWeeklyBackup } from './hooks/useWeeklyBackup';
+import WeeklyBackupPromptModal from './components/WeeklyBackupPromptModal';
+import TopHeaderBar from './components/TopHeaderBar';
+import GlobalSearchModal from './components/GlobalSearchModal';
 import { Zap, X } from 'lucide-react';
 
 // Helper to convert any Firebase/JS timestamp or date safely to milliseconds
@@ -63,12 +75,54 @@ const getTimestampMs = (val: any): number => {
 };
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem('tfc_user');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error reading saved user session:", e);
+    }
+    // Default logged-in Admin profile for instant live preview access
+    return {
+      uid: 'admin-satish',
+      email: 'sateesh2000',
+      name: 'Satish Tiwari',
+      role: 'admin',
+      createdAt: new Date()
+    };
+  });
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [subActionTrigger, setSubActionTrigger] = useState<string>('');
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState<boolean>(false);
 
   const lastCheckedSignatureRef = React.useRef<string>('');
+
+  // Global Keyboard shortcut listener for Omni-Search (Cmd+K / Ctrl+K / "/")
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K or Ctrl+K
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setIsGlobalSearchOpen(prev => !prev);
+        return;
+      }
+      
+      // "/" key when not focused on any text input/textarea/editable field
+      if (
+        e.key === '/' && 
+        document.activeElement?.tagName !== 'INPUT' && 
+        document.activeElement?.tagName !== 'TEXTAREA' &&
+        !(document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        e.preventDefault();
+        setIsGlobalSearchOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   // Color Palette/Theme preference with local storage persistence
   const [theme, setTheme] = useState<'luxury-green' | 'midnight-gold' | 'royal-sapphire'>(() => {
@@ -99,6 +153,7 @@ export default function App() {
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [payments, setPayments] = useState<PaymentHistory[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [recycleBinItems, setRecycleBinItems] = useState<RecycleBinItem[]>([]);
 
   // Initialize Background Deadline Task Runner Service
   const {
@@ -106,9 +161,32 @@ export default function App() {
     lastCheckTime: runnerLastCheckTime,
     checkCount: runnerCheckCount,
     recentToastMessage: runnerToastMessage,
+    pushPermissionState,
+    requestPushPermission,
+    sendTestPush,
     dismissToast: dismissRunnerToast,
     triggerManualCheck: handleRunnerManualCheck
-  } = useDeadlineRunner(calendarEvents, notifications);
+  } = useDeadlineRunner(calendarEvents, notifications, projects);
+
+  // Initialize Weekly Backup Service
+  const {
+    isBackupDue: isWeeklyBackupDue,
+    lastBackupDate: lastWeeklyBackupDate,
+    showPrompt: showWeeklyBackupPrompt,
+    setShowPrompt: setShowWeeklyBackupPrompt,
+    downloadSuccess: weeklyBackupDownloadSuccess,
+    triggerDownloadBackup: handleTriggerWeeklyBackup,
+    snoozeBackup: handleSnoozeWeeklyBackup
+  } = useWeeklyBackup(
+    projects,
+    studios,
+    editors,
+    expenses,
+    calendarEvents,
+    revisions,
+    payments,
+    currentUser
+  );
 
   // 1. Online / Offline network detection listener
   useEffect(() => {
@@ -132,14 +210,7 @@ export default function App() {
     runSeed();
   }, []);
 
-  // 3. Require password on every page open / refresh (no auto-persistent session)
-  useEffect(() => {
-    // Clear any cached user session on page load so user must log in with password every time
-    localStorage.removeItem('tfc_user');
-    setCurrentUser(null);
-  }, []);
-
-  // 4. Real-time Firestore Subscriptions
+  // 3. Real-time Firestore Subscriptions
   useEffect(() => {
     let unsubProjects = () => {};
     let unsubStudios = () => {};
@@ -149,6 +220,8 @@ export default function App() {
     let unsubCalendar = () => {};
     let unsubRevs = () => {};
     let unsubPayments = () => {};
+    let unsubInvoices = () => {};
+    let unsubRecycleBin = () => {};
 
     try {
       // Projects Sync
@@ -157,13 +230,52 @@ export default function App() {
         (snap) => {
           const list: Project[] = [];
           snap.forEach(docSnap => {
-            list.push({ ...docSnap.data() as any, id: docSnap.id });
+            const data = docSnap.data() as any;
+            const projectItem: Project = {
+              projectName: data.projectName || (data.brideName && data.groomName ? `${data.brideName} & ${data.groomName} Wedding` : 'Wedding Project'),
+              coupleName: data.coupleName || (data.groomName || data.brideName ? `${data.groomName || ''} & ${data.brideName || ''}`.trim() : 'Wedding Couple'),
+              brideName: data.brideName || '',
+              groomName: data.groomName || '',
+              couplePhoto: data.couplePhoto || '',
+              studioId: data.studioId || 'direct-client',
+              studioName: data.studioName || 'Direct Client',
+              eventType: data.eventType || 'Wedding Film',
+              shootDate: data.shootDate || '',
+              deliveryDate: data.deliveryDate || '',
+              assignedEditorId: data.assignedEditorId || '',
+              assignedEditorName: data.assignedEditorName || 'Unassigned',
+              isSplitProject: !!data.isSplitProject,
+              secondEditorId: data.secondEditorId || '',
+              secondEditorName: data.secondEditorName || '',
+              firstEditorShare: Number(data.firstEditorShare) || 0,
+              secondEditorShare: Number(data.secondEditorShare) || 0,
+              status: data.status || 'data_received',
+              priority: data.priority || 'medium',
+              projectAmount: Number(data.projectAmount) || 0,
+              editorPayment: Number(data.editorPayment) || 0,
+              otherExpenses: Number(data.otherExpenses) || 0,
+              advancePayment: Number(data.advancePayment) || 0,
+              remainingBalance: data.remainingBalance !== undefined ? Number(data.remainingBalance) : Math.max(0, (Number(data.projectAmount) || 0) - (Number(data.advancePayment) || 0)),
+              notes: data.notes || '',
+              hardDiskName: data.hardDiskName || '',
+              dataSize: data.dataSize || '',
+              backupStatus: data.backupStatus || 'pending',
+              googleDriveLink: data.googleDriveLink || '',
+              rawDataFolder: data.rawDataFolder || '',
+              deliveryFolder: data.deliveryFolder || '',
+              finalExportFolder: data.finalExportFolder || '',
+              createdAt: data.createdAt || new Date(),
+              updatedAt: data.updatedAt || new Date(),
+              ...data,
+              id: docSnap.id
+            };
+            list.push(projectItem);
           });
           // Sort newest created first
           setProjects(list.sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt)));
         },
         (error) => {
-          console.error("Error syncing projects from Firestore:", error);
+          console.error("[Firestore Sync Error] Error syncing projects collection:", error);
         }
       );
 
@@ -173,7 +285,8 @@ export default function App() {
         (snap) => {
           const list: Studio[] = [];
           snap.forEach(docSnap => {
-            list.push({ ...docSnap.data() as any, id: docSnap.id });
+            const data = docSnap.data() as any;
+            list.push({ ...data, id: docSnap.id });
           });
           setStudios(list);
         },
@@ -254,7 +367,12 @@ export default function App() {
           snap.forEach(docSnap => {
             list.push({ ...docSnap.data() as any, id: docSnap.id });
           });
-          setRevisions(list.sort((a, b) => (b.revisionNumber || 0) - (a.revisionNumber || 0)));
+          setRevisions(list.sort((a, b) => {
+            const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.date ? new Date(a.date).getTime() : 0));
+            const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.date ? new Date(b.date).getTime() : 0));
+            if (timeB !== timeA) return timeB - timeA;
+            return (b.revisionNumber || 0) - (a.revisionNumber || 0);
+          }));
         },
         (error) => {
           console.error("Error syncing revision history from Firestore:", error);
@@ -267,7 +385,8 @@ export default function App() {
         (snap) => {
           const list: PaymentHistory[] = [];
           snap.forEach(docSnap => {
-            list.push({ ...docSnap.data() as any, id: docSnap.id });
+            const data = docSnap.data() as any;
+            list.push({ ...data, id: docSnap.id });
           });
           setPayments(list.sort((a, b) => {
             const timeA = a.date ? new Date(a.date).getTime() : 0;
@@ -281,7 +400,7 @@ export default function App() {
       );
 
       // Invoices Sync
-      onSnapshot(
+      unsubInvoices = onSnapshot(
         collection(db, 'studioInvoices'),
         (snap) => {
           const list: any[] = [];
@@ -292,6 +411,21 @@ export default function App() {
         },
         (error) => {
           console.error("Error syncing invoices from Firestore:", error);
+        }
+      );
+
+      // Recycle Bin Sync
+      unsubRecycleBin = onSnapshot(
+        collection(db, 'recycle_bin'),
+        (snap) => {
+          const list: RecycleBinItem[] = [];
+          snap.forEach(docSnap => {
+            list.push({ ...docSnap.data() as any, id: docSnap.id });
+          });
+          setRecycleBinItems(list.sort((a, b) => getTimestampMs(b.deletedAt) - getTimestampMs(a.deletedAt)));
+        },
+        (error) => {
+          console.error("Error syncing recycle bin from Firestore:", error);
         }
       );
     } catch (e) {
@@ -307,6 +441,8 @@ export default function App() {
       unsubCalendar();
       unsubRevs();
       unsubPayments();
+      unsubInvoices();
+      unsubRecycleBin();
     };
   }, []);
 
@@ -335,7 +471,7 @@ export default function App() {
 
   // --- CRUD Database Operations ---
 
-  // Projects CRUD
+  // Projects CRUD with Automatic Audit Trail Logging to Firestore 'revisionHistory'
   const handleAddProject = async (project: Omit<Project, 'createdAt' | 'updatedAt'>) => {
     const docRef = doc(db, 'projects', project.id);
     const cleanedProject = cleanUndefined(project);
@@ -344,18 +480,272 @@ export default function App() {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+
+    // Record Project Creation Audit Log
+    try {
+      const auditId = `audit-${Date.now()}-created`;
+      const auditRef = doc(db, 'revisionHistory', auditId);
+      await setDoc(auditRef, {
+        id: auditId,
+        projectId: project.id,
+        projectCoupleName: project.coupleName || project.projectName || 'New Project',
+        studioName: project.studioName || 'Partner Studio',
+        type: 'creation',
+        category: 'general',
+        notes: `New project registered: ${project.coupleName} (${project.eventType || 'Wedding'}) for ${project.studioName} with contract value ₹${Number(project.projectAmount || 0).toLocaleString('en-IN')}.`,
+        status: 'logged',
+        performedBy: currentUser?.name || 'Administrator',
+        performedByRole: currentUser?.role || 'admin',
+        performedByEmail: currentUser?.email || '',
+        date: new Date().toISOString().slice(0, 10),
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error("Failed to log project creation audit entry:", err);
+    }
   };
 
   const handleUpdateProject = async (id: string, updates: Partial<Project>) => {
+    const existingProj = projects.find(p => p.id === id);
     const docRef = doc(db, 'projects', id);
     const cleanedUpdates = cleanUndefined(updates);
     await setDoc(docRef, {
       ...cleanedUpdates,
       updatedAt: serverTimestamp()
     }, { merge: true });
+
+    // Automatic Audit Trail Logging to Firestore 'revisionHistory'
+    if (existingProj) {
+      const actorName = currentUser?.name || 'Administrator';
+      const actorRole = currentUser?.role || 'admin';
+      const actorEmail = currentUser?.email || '';
+      const coupleName = existingProj.coupleName || existingProj.projectName || 'Project';
+      const studioName = existingProj.studioName || 'Studio Client';
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      const logAudit = async (
+        type: AuditLogType,
+        category: AuditLogCategory,
+        fieldChanged: string,
+        previousValue: any,
+        newValue: any,
+        notes: string
+      ) => {
+        try {
+          const auditId = `audit-${Date.now()}-${fieldChanged.toLowerCase()}`;
+          const auditRef = doc(db, 'revisionHistory', auditId);
+          await setDoc(auditRef, {
+            id: auditId,
+            projectId: id,
+            projectCoupleName: coupleName,
+            studioName,
+            type,
+            category,
+            changedField: fieldChanged,
+            previousValue,
+            newValue,
+            notes,
+            status: 'logged',
+            performedBy: actorName,
+            performedByRole: actorRole,
+            performedByEmail: actorEmail,
+            date: todayStr,
+            createdAt: serverTimestamp()
+          });
+        } catch (err) {
+          console.error(`Failed to record audit log for ${fieldChanged}:`, err);
+        }
+      };
+
+      // 1. Status Transition
+      if (updates.status !== undefined && updates.status !== existingProj.status) {
+        const oldFmt = existingProj.status.replace(/_/g, ' ');
+        const newFmt = updates.status.replace(/_/g, ' ');
+        await logAudit(
+          'status_change',
+          'status',
+          'status',
+          existingProj.status,
+          updates.status,
+          `Project workflow status advanced from "${oldFmt}" to "${newFmt}".`
+        );
+      }
+
+      // 2. Contract Amount Change
+      if (updates.projectAmount !== undefined && Number(updates.projectAmount) !== Number(existingProj.projectAmount)) {
+        await logAudit(
+          'amount_change',
+          'financial',
+          'projectAmount',
+          Number(existingProj.projectAmount || 0),
+          Number(updates.projectAmount),
+          `Total Contract Amount updated from ₹${Number(existingProj.projectAmount || 0).toLocaleString('en-IN')} to ₹${Number(updates.projectAmount).toLocaleString('en-IN')}.`
+        );
+      }
+
+      // 3. Advance Payment Change
+      if (updates.advancePayment !== undefined && Number(updates.advancePayment) !== Number(existingProj.advancePayment)) {
+        await logAudit(
+          'amount_change',
+          'financial',
+          'advancePayment',
+          Number(existingProj.advancePayment || 0),
+          Number(updates.advancePayment),
+          `Advance Payment updated from ₹${Number(existingProj.advancePayment || 0).toLocaleString('en-IN')} to ₹${Number(updates.advancePayment).toLocaleString('en-IN')}.`
+        );
+      }
+
+      // 4. Remaining Balance Change
+      if (updates.remainingBalance !== undefined && Number(updates.remainingBalance) !== Number(existingProj.remainingBalance)) {
+        await logAudit(
+          'amount_change',
+          'financial',
+          'remainingBalance',
+          Number(existingProj.remainingBalance || 0),
+          Number(updates.remainingBalance),
+          `Outstanding remaining balance recalculated from ₹${Number(existingProj.remainingBalance || 0).toLocaleString('en-IN')} to ₹${Number(updates.remainingBalance).toLocaleString('en-IN')}.`
+        );
+      }
+
+      // 5. Editor Payment Change
+      if (updates.editorPayment !== undefined && Number(updates.editorPayment) !== Number(existingProj.editorPayment)) {
+        await logAudit(
+          'amount_change',
+          'financial',
+          'editorPayment',
+          Number(existingProj.editorPayment || 0),
+          Number(updates.editorPayment),
+          `Editor wage payout compensation adjusted from ₹${Number(existingProj.editorPayment || 0).toLocaleString('en-IN')} to ₹${Number(updates.editorPayment).toLocaleString('en-IN')}.`
+        );
+      }
+
+      // 6. Other Expenses Change
+      if (updates.otherExpenses !== undefined && Number(updates.otherExpenses) !== Number(existingProj.otherExpenses)) {
+        await logAudit(
+          'amount_change',
+          'financial',
+          'otherExpenses',
+          Number(existingProj.otherExpenses || 0),
+          Number(updates.otherExpenses),
+          `Project expense allocation adjusted from ₹${Number(existingProj.otherExpenses || 0).toLocaleString('en-IN')} to ₹${Number(updates.otherExpenses).toLocaleString('en-IN')}.`
+        );
+      }
+
+      // 7. Lead Editor Assignment Change
+      if (
+        (updates.assignedEditorName !== undefined && updates.assignedEditorName !== existingProj.assignedEditorName) ||
+        (updates.assignedEditorId !== undefined && updates.assignedEditorId !== existingProj.assignedEditorId)
+      ) {
+        const oldEditor = existingProj.assignedEditorName || 'Unassigned';
+        const newEditor = updates.assignedEditorName || 'Unassigned';
+        await logAudit(
+          'assignment_change',
+          'assignment',
+          'assignedEditor',
+          oldEditor,
+          newEditor,
+          `Lead Video Editor reassigned from "${oldEditor}" to "${newEditor}".`
+        );
+      }
+
+      // 8. Secondary Editor Assignment Change
+      if (
+        (updates.secondEditorName !== undefined && updates.secondEditorName !== existingProj.secondEditorName) ||
+        (updates.isSplitProject !== undefined && updates.isSplitProject !== existingProj.isSplitProject)
+      ) {
+        const oldSec = existingProj.secondEditorName || 'None';
+        const newSec = updates.secondEditorName || (updates.isSplitProject ? 'Assigned' : 'None');
+        await logAudit(
+          'assignment_change',
+          'assignment',
+          'secondEditor',
+          oldSec,
+          newSec,
+          `Secondary/Split Video Editor allocation updated to "${newSec}".`
+        );
+      }
+
+      // 9. Priority Change
+      if (updates.priority !== undefined && updates.priority !== existingProj.priority) {
+        await logAudit(
+          'general',
+          'status',
+          'priority',
+          existingProj.priority,
+          updates.priority,
+          `Project priority changed from ${existingProj.priority.toUpperCase()} to ${updates.priority.toUpperCase()}.`
+        );
+      }
+
+      // 10. Delivery Deadline Change
+      if (updates.deliveryDate !== undefined && updates.deliveryDate !== existingProj.deliveryDate) {
+        await logAudit(
+          'general',
+          'delivery',
+          'deliveryDate',
+          existingProj.deliveryDate,
+          updates.deliveryDate,
+          `Delivery deadline rescheduled from ${existingProj.deliveryDate} to ${updates.deliveryDate}.`
+        );
+      }
+
+      // 11. Storage / Backup Status Change
+      if (updates.backupStatus !== undefined && updates.backupStatus !== existingProj.backupStatus) {
+        await logAudit(
+          'general',
+          'data_manager',
+          'backupStatus',
+          existingProj.backupStatus || 'pending',
+          updates.backupStatus,
+          `Physical hard disk backup status marked as ${updates.backupStatus === 'backed_up' ? 'Verified Backed Up' : 'Pending Backup'}.`
+        );
+      }
+    }
+  };
+
+  // Recycle Bin Helper for Safe Deletion Protection
+  const moveToRecycleBin = async (
+    itemType: RecycleBinItemType,
+    originalId: string,
+    itemTitle: string,
+    itemSubtitle: string,
+    targetCollection: string,
+    data: any
+  ) => {
+    try {
+      const binId = `bin-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const binRef = doc(db, 'recycle_bin', binId);
+      const binItem: RecycleBinItem = {
+        id: binId,
+        originalId,
+        itemType,
+        itemTitle: itemTitle || 'Untitled Item',
+        itemSubtitle: itemSubtitle || '',
+        data: cleanUndefined(data),
+        targetCollection,
+        deletedAt: serverTimestamp(),
+        deletedBy: currentUser?.name || currentUser?.email || 'Admin User',
+        deletedByRole: currentUser?.role || 'admin',
+        deletedByEmail: currentUser?.email || ''
+      };
+      await setDoc(binRef, binItem);
+    } catch (err) {
+      console.error('Failed to move item to recycle bin:', err);
+    }
   };
 
   const handleDeleteProject = async (id: string) => {
+    const proj = projects.find(p => p.id === id);
+    if (proj) {
+      await moveToRecycleBin(
+        'project',
+        id,
+        proj.projectName || proj.coupleName || 'Wedding Project',
+        `${proj.studioName || 'Studio'} • ₹${proj.projectAmount?.toLocaleString('en-IN') || 0} • Status: ${proj.status}`,
+        'projects',
+        proj
+      );
+    }
     const docRef = doc(db, 'projects', id);
     await deleteDoc(docRef);
   };
@@ -377,6 +767,17 @@ export default function App() {
   };
 
   const handleDeleteRevision = async (revId: string) => {
+    const rev = revisions.find(r => r.id === revId);
+    if (rev) {
+      await moveToRecycleBin(
+        'revision',
+        revId,
+        `Revision #${rev.revisionNumber} (${rev.projectName || 'Project'})`,
+        rev.notes || rev.feedback || 'Revision notes',
+        'revisionHistory',
+        rev
+      );
+    }
     const docRef = doc(db, 'revisionHistory', revId);
     await deleteDoc(docRef);
   };
@@ -404,6 +805,17 @@ export default function App() {
   };
 
   const handleDeleteStudio = async (id: string) => {
+    const std = studios.find(s => s.id === id);
+    if (std) {
+      await moveToRecycleBin(
+        'studio',
+        id,
+        std.name || 'Studio Client',
+        `${std.city || 'City'} • ${std.phone || std.email || 'Contact'}`,
+        'studios',
+        std
+      );
+    }
     const docRef = doc(db, 'studios', id);
     await deleteDoc(docRef);
   };
@@ -425,6 +837,17 @@ export default function App() {
   };
 
   const handleDeleteEditor = async (id: string) => {
+    const ed = editors.find(e => e.id === id);
+    if (ed) {
+      await moveToRecycleBin(
+        'editor',
+        id,
+        ed.name || 'Video Editor',
+        `${ed.specialization || 'Editor'} • ${ed.phone || ed.email || ''}`,
+        'editors',
+        ed
+      );
+    }
     const docRef = doc(db, 'editors', id);
     await deleteDoc(docRef);
   };
@@ -446,6 +869,17 @@ export default function App() {
   };
 
   const handleDeleteExpense = async (id: string) => {
+    const exp = expenses.find(e => e.id === id);
+    if (exp) {
+      await moveToRecycleBin(
+        'expense',
+        id,
+        exp.title || 'Studio Expense',
+        `₹${exp.amount?.toLocaleString('en-IN') || 0} • ${exp.category || 'General'} • ${exp.date || ''}`,
+        'expenses',
+        exp
+      );
+    }
     const docRef = doc(db, 'expenses', id);
     await deleteDoc(docRef);
   };
@@ -485,12 +919,40 @@ export default function App() {
   const handleDeletePayment = async (id: string) => {
     try {
       console.log("handleDeletePayment initiating for ID:", id);
+      const pay = payments.find(p => p.id === id);
+      if (pay) {
+        await moveToRecycleBin(
+          'payment',
+          id,
+          `${pay.type === 'studio_receipt' ? 'Studio Payment Received' : 'Editor Payout'} - ₹${pay.amount?.toLocaleString('en-IN') || 0}`,
+          `${pay.entityName || ''} • ${pay.paymentMode || ''} • ${pay.date || ''}`,
+          'editorPayments',
+          pay
+        );
+      }
       const docRef = doc(db, 'editorPayments', id);
       await deleteDoc(docRef);
       console.log("handleDeletePayment completed successfully for ID:", id);
     } catch (error) {
       console.error("Error deleting payment document:", error);
       alert("Failed to delete transaction: " + (error instanceof Error ? error.message : String(error)));
+      throw error;
+    }
+  };
+
+  const handleClearAllPayments = async () => {
+    try {
+      console.log("[Payment Cleanup] Clearing all payments from Firestore collection 'editorPayments'...");
+      const snap = await getDocs(collection(db, 'editorPayments'));
+      const batch = writeBatch(db);
+      snap.forEach(d => {
+        batch.delete(d.ref);
+      });
+      await batch.commit();
+      console.log(`Successfully purged ${snap.size} payment records from Firestore.`);
+    } catch (error) {
+      console.error("Error clearing payments database:", error);
+      alert("Failed to clear payments: " + (error instanceof Error ? error.message : String(error)));
       throw error;
     }
   };
@@ -514,16 +976,27 @@ export default function App() {
 
   // Invoice Draft Save & Delete
   const handleSaveInvoiceDraft = async (invoiceData: any) => {
-    const docId = invoiceData.invoiceNo || `AI-2026-${Date.now().toString().slice(-4)}`;
+    const docId = invoiceData.invoiceNo || invoiceData.id || `AI-2026-${Date.now().toString().slice(-4)}`;
     const docRef = doc(db, 'studioInvoices', docId);
     await setDoc(docRef, {
       ...cleanUndefined(invoiceData),
       id: docId,
-      createdAt: serverTimestamp()
-    });
+      updatedAt: serverTimestamp()
+    }, { merge: true });
   };
 
   const handleDeleteInvoiceDraft = async (id: string) => {
+    const inv = invoices.find(i => i.id === id || i.invoiceNo === id);
+    if (inv) {
+      await moveToRecycleBin(
+        'invoice',
+        id,
+        `GST Invoice ${inv.invoiceNo || id}`,
+        `${inv.studioName || ''} • ₹${inv.totalAmount?.toLocaleString('en-IN') || 0}`,
+        'studioInvoices',
+        inv
+      );
+    }
     const docRef = doc(db, 'studioInvoices', id);
     await deleteDoc(docRef);
   };
@@ -545,8 +1018,99 @@ export default function App() {
   };
 
   const handleDeleteCalendarEvent = async (id: string) => {
+    const evt = calendarEvents.find(c => c.id === id);
+    if (evt) {
+      await moveToRecycleBin(
+        'calendar_event',
+        id,
+        evt.title || 'Calendar Event',
+        `${evt.start || ''} • ${evt.type || 'Event'}`,
+        'calendar',
+        evt
+      );
+    }
     const docRef = doc(db, 'calendar', id);
     await deleteDoc(docRef);
+  };
+
+  // Recycle Bin Safety Net Operations (Restore & Purge)
+  const handleRestoreRecycleBinItem = async (item: RecycleBinItem) => {
+    try {
+      const targetDocRef = doc(db, item.targetCollection, item.originalId);
+      await setDoc(targetDocRef, {
+        ...cleanUndefined(item.data),
+        id: item.originalId,
+        restoredAt: serverTimestamp()
+      }, { merge: true });
+
+      const binDocRef = doc(db, 'recycle_bin', item.id);
+      await deleteDoc(binDocRef);
+
+      try {
+        const auditId = `audit-${Date.now()}-restore`;
+        const auditRef = doc(db, 'revisionHistory', auditId);
+        await setDoc(auditRef, {
+          id: auditId,
+          projectId: item.originalId,
+          projectCoupleName: item.itemTitle,
+          studioName: item.targetCollection,
+          type: 'general',
+          category: 'assignment',
+          changedField: 'recycle_bin_restore',
+          previousValue: 'recycle_bin',
+          newValue: item.targetCollection,
+          notes: `Restored "${item.itemTitle}" (${item.itemType}) back to active ${item.targetCollection} database.`,
+          status: 'logged',
+          performedBy: currentUser?.name || 'Administrator',
+          performedByRole: currentUser?.role || 'admin',
+          performedByEmail: currentUser?.email || '',
+          date: new Date().toISOString().slice(0, 10),
+          createdAt: serverTimestamp()
+        });
+      } catch (logErr) {
+        console.error("Failed to log restore audit:", logErr);
+      }
+    } catch (error) {
+      console.error('Failed to restore item from recycle bin:', error);
+      alert('Failed to restore item: ' + (error instanceof Error ? error.message : String(error)));
+      throw error;
+    }
+  };
+
+  const handlePermanentDeleteRecycleBinItem = async (itemId: string) => {
+    try {
+      const binDocRef = doc(db, 'recycle_bin', itemId);
+      await deleteDoc(binDocRef);
+    } catch (error) {
+      console.error('Failed to permanently delete item:', error);
+      alert('Failed to delete item: ' + (error instanceof Error ? error.message : String(error)));
+      throw error;
+    }
+  };
+
+  const handleEmptyRecycleBin = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'recycle_bin'));
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch (error) {
+      console.error('Failed to empty recycle bin:', error);
+      alert('Failed to empty recycle bin: ' + (error instanceof Error ? error.message : String(error)));
+      throw error;
+    }
+  };
+
+  const handleRestoreAllRecycleBinItems = async () => {
+    try {
+      for (const item of recycleBinItems) {
+        await handleRestoreRecycleBinItem(item);
+      }
+    } catch (error) {
+      console.error('Failed to restore all items:', error);
+      alert('Failed to restore some items: ' + (error instanceof Error ? error.message : String(error)));
+      throw error;
+    }
   };
 
   // Clear / Reset Entire database
@@ -638,6 +1202,7 @@ export default function App() {
     };
 
     setCurrentUser(profile);
+    localStorage.setItem('tfc_user', JSON.stringify(profile));
     localStorage.setItem(`tfc_user_profile_${userUid}`, JSON.stringify(profile));
 
     // Redirect role-specific defaults
@@ -716,6 +1281,29 @@ export default function App() {
     }
   };
 
+  // Global Search Navigation Handlers
+  const handleSearchNavigateToProject = (project: Project) => {
+    setIsGlobalSearchOpen(false);
+    setActiveTab('projects');
+    setSubActionTrigger(`open_project:${project.id}`);
+    setTimeout(() => setSubActionTrigger(''), 600);
+  };
+
+  const handleSearchNavigateToStudio = (_studio: Studio) => {
+    setIsGlobalSearchOpen(false);
+    setActiveTab('studios');
+  };
+
+  const handleSearchNavigateToEditor = (_editor: Editor) => {
+    setIsGlobalSearchOpen(false);
+    setActiveTab('editors');
+  };
+
+  const handleSearchNavigateToTab = (tabId: string, subAction?: string) => {
+    setIsGlobalSearchOpen(false);
+    handleQuickAction(tabId, subAction);
+  };
+
   // Filter project arrays based on roles
   const getRoleFilteredProjects = () => {
     if (currentUser?.role === 'editor' && currentUser.editorId) {
@@ -759,6 +1347,83 @@ export default function App() {
   // Render correct tab view panel
   const renderView = () => {
     switch (activeTab) {
+      case 'projects':
+        return (
+          <ProjectsView
+            projects={roleFilteredProjects}
+            studios={studios}
+            editors={editors}
+            revisions={revisions}
+            payments={payments}
+            calendarEvents={calendarEvents}
+            userRole={currentUser?.role || 'admin'}
+            currentStudioId={currentUser?.studioId}
+            onAddProject={handleAddProject}
+            onUpdateProject={handleUpdateProject}
+            onDeleteProject={handleDeleteProject}
+            onAddRevision={handleAddRevision}
+            onResolveRevision={handleResolveRevision}
+            onDeleteRevision={handleDeleteRevision}
+            onRedirectToRegistry={() => setActiveTab('registry')}
+            initialTriggerAction={subActionTrigger}
+          />
+        );
+      case 'registry':
+        return (
+          <RegistryView
+            studios={studios}
+            editors={editors}
+            projects={roleFilteredProjects}
+            userRole={currentUser?.role || 'admin'}
+            currentStudioId={currentUser?.studioId}
+            onAddProject={handleAddProject}
+            onUpdateProject={handleUpdateProject}
+            onDeleteProject={handleDeleteProject}
+            onRedirectToProjects={() => setActiveTab('projects')}
+          />
+        );
+      case 'studios':
+        return (
+          <StudiosView
+            studios={studios}
+            projects={projects}
+            payments={payments}
+            userRole={currentUser?.role || 'admin'}
+            onAddStudio={handleAddStudio}
+            onUpdateStudio={handleUpdateStudio}
+            onDeleteStudio={handleDeleteStudio}
+            onLogPayment={handleLogPayment}
+          />
+        );
+      case 'editors':
+        return (
+          <EditorsView
+            editors={editors}
+            projects={projects}
+            payments={payments}
+            studios={studios}
+            userRole={currentUser?.role || 'admin'}
+            currentEditorId={currentUser?.editorId}
+            currentUserEmail={currentUser?.email}
+            onAddEditor={handleAddEditor}
+            onUpdateEditor={handleUpdateEditor}
+            onDeleteEditor={handleDeleteEditor}
+            onLogPayment={handleLogPayment}
+            onDeletePayment={handleDeletePayment}
+            onUpdateProject={handleUpdateProject}
+          />
+        );
+      case 'gemini':
+        return (
+          <GeminiAIView
+            projects={roleFilteredProjects}
+            studios={studios}
+            editors={editors}
+            expenses={expenses}
+            calendarEvents={calendarEvents}
+            currentUser={currentUser}
+          />
+        );
       case 'dashboard':
         return (
           <DashboardView
@@ -771,15 +1436,25 @@ export default function App() {
             onQuickAction={handleQuickAction}
             isOnline={isOnline}
             payments={payments}
+            invoices={invoices}
             onLogPayment={handleLogPayment}
             onUpdateProject={handleUpdateProject}
             onDeleteProject={handleDeleteProject}
             onDeletePayment={handleDeletePayment}
             onUpdatePayment={handleUpdatePayment}
             onNavigateTab={(tab) => setActiveTab(tab)}
+            recycleBinItems={recycleBinItems}
+            onRestoreRecycleBinItem={handleRestoreRecycleBinItem}
+            isWeeklyBackupDue={isWeeklyBackupDue}
+            lastWeeklyBackupDate={lastWeeklyBackupDate}
+            onTriggerWeeklyBackup={handleTriggerWeeklyBackup}
+            onSnoozeWeeklyBackup={handleSnoozeWeeklyBackup}
+            revisions={revisions}
           />
         );
       case 'payments':
+      case 'finance':
+      case 'financial_overview':
         return (
           <PaymentsLedgerView
             payments={payments}
@@ -791,97 +1466,11 @@ export default function App() {
             onLogPayment={handleLogPayment}
             onUpdatePayment={handleUpdatePayment}
             onDeletePayment={handleDeletePayment}
+            onClearAllPayments={handleClearAllPayments}
             onUpdateProject={handleUpdateProject}
-          />
-        );
-      case 'gemini':
-        return (
-          <GeminiAIView
-            projects={projects}
-            studios={studios}
-            editors={editors}
-            expenses={expenses}
-            calendarEvents={calendarEvents}
-            currentUser={currentUser}
-          />
-        );
-      case 'registry':
-        return (
-          <RegistryView
-            studios={studios}
-            editors={editors}
-            projects={projects}
-            userRole={currentUser?.role || 'admin'}
-            currentStudioId={currentUser?.studioId}
-            onAddProject={handleAddProject}
-            onUpdateProject={handleUpdateProject}
-            onDeleteProject={handleDeleteProject}
-            onRedirectToProjects={() => setActiveTab('projects')}
-          />
-        );
-      case 'projects':
-        return (
-          <ProjectsView
-            projects={roleFilteredProjects}
-            studios={studios}
-            editors={editors}
-            revisions={revisions}
-            calendarEvents={calendarEvents}
-            userRole={currentUser?.role || 'admin'}
-            currentStudioId={currentUser?.studioId}
-            onAddProject={handleAddProject}
-            onUpdateProject={handleUpdateProject}
-            onDeleteProject={handleDeleteProject}
-            onAddRevision={handleAddRevision}
-            onResolveRevision={handleResolveRevision}
-            onDeleteRevision={handleDeleteRevision}
-            onRedirectToRegistry={() => setActiveTab('registry')}
-            initialTriggerAction={subActionTrigger === 'add_project' ? 'add_project' : undefined}
-          />
-        );
-      case 'studios':
-        return (
-          <StudiosView
-            studios={studios}
-            projects={projects}
-            payments={payments}
-            onAddStudio={handleAddStudio}
-            onUpdateStudio={handleUpdateStudio}
-            onDeleteStudio={handleDeleteStudio}
-          />
-        );
-
-      case 'editors':
-        return (
-          <EditorsView
-            editors={editors}
-            projects={projects}
-            payments={payments}
-            userRole={currentUser?.role || 'admin'}
-            currentEditorId={currentUser?.editorId}
-            currentUserEmail={currentUser?.email}
-            onAddEditor={handleAddEditor}
-            onUpdateEditor={handleUpdateEditor}
-            onDeleteEditor={handleDeleteEditor}
-            onLogPayment={handleLogPayment}
-            onDeletePayment={handleDeletePayment}
-          />
-        );
-      case 'finance':
-      case 'financial_overview':
-        return (
-          <FinancialOverviewView
-            projects={projects}
-            expenses={expenses}
-            editors={editors}
-            studios={studios}
-            payments={payments}
             onAddExpense={handleAddExpense}
             onUpdateExpense={handleUpdateExpense}
             onDeleteExpense={handleDeleteExpense}
-            onUpdatePayment={handleUpdatePayment}
-            onDeletePayment={handleDeletePayment}
-            onNavigateTab={(tab) => setActiveTab(tab)}
           />
         );
       case 'invoice':
@@ -901,8 +1490,17 @@ export default function App() {
         return (
           <DataManagerView
             projects={roleFilteredProjects}
+            allProjects={projects}
+            studios={studios}
+            editors={editors}
+            expenses={expenses}
+            payments={payments}
             onUpdateProject={handleUpdateProject}
             onDeleteProject={handleDeleteProject}
+            onTriggerWeeklyBackup={handleTriggerWeeklyBackup}
+            lastWeeklyBackupDate={lastWeeklyBackupDate}
+            isWeeklyBackupDue={isWeeklyBackupDue}
+            userRole={currentUser?.role}
           />
         );
 
@@ -913,6 +1511,22 @@ export default function App() {
             studios={studios}
             editors={editors}
             expenses={expenses}
+          />
+        );
+      case 'audit':
+      case 'auditlog':
+      case 'revisionHistory':
+        return (
+          <AuditLogView
+            revisions={revisions}
+            projects={projects}
+            studios={studios}
+            editors={editors}
+            currentUser={currentUser}
+            onAddRevision={handleAddRevision}
+            onResolveRevision={handleResolveRevision}
+            onDeleteRevision={handleDeleteRevision}
+            onUpdateProject={handleUpdateProject}
           />
         );
       case 'calendar':
@@ -933,6 +1547,9 @@ export default function App() {
             runnerIsRunning={runnerIsRunning}
             runnerLastCheckTime={runnerLastCheckTime}
             runnerCheckCount={runnerCheckCount}
+            pushPermissionState={pushPermissionState}
+            onRequestPushPermission={requestPushPermission}
+            onSendTestPush={sendTestPush}
             onRunnerManualCheck={handleRunnerManualCheck}
             onMarkRead={handleMarkRead}
             onClearNotification={handleClearNotification}
@@ -955,6 +1572,23 @@ export default function App() {
             calendarEvents={calendarEvents}
             revisions={revisions}
             payments={payments}
+            onUpdateProject={handleUpdateProject}
+            isWeeklyBackupDue={isWeeklyBackupDue}
+            lastWeeklyBackupDate={lastWeeklyBackupDate}
+            onTriggerWeeklyBackup={handleTriggerWeeklyBackup}
+          />
+        );
+      case 'recyclebin':
+      case 'trash':
+      case 'recycle_bin':
+        return (
+          <RecycleBinView
+            recycleBinItems={recycleBinItems}
+            onRestoreItem={handleRestoreRecycleBinItem}
+            onPermanentDeleteItem={handlePermanentDeleteRecycleBinItem}
+            onEmptyRecycleBin={handleEmptyRecycleBin}
+            onRestoreAllItems={handleRestoreAllRecycleBinItems}
+            onNavigateTab={(tab) => setActiveTab(tab)}
           />
         );
       default:
@@ -978,14 +1612,29 @@ export default function App() {
         setActiveTab={setActiveTab}
         currentUser={currentUser}
         onLogout={handleLogout}
+        theme={theme}
+        onThemeChange={setTheme}
+        recycleBinCount={recycleBinItems.length}
       />
 
       {/* Sidebar layout spacer to reserve space on desktop and prevent reflows on hover */}
       <div className="hidden md:block w-24 shrink-0 mr-4" />
 
       {/* Main View Container with Parallax Perspective */}
-      <main id="main-content-flow" className="flex-1 p-4 md:p-8 md:pl-6 overflow-x-hidden min-h-screen relative z-10">
-        <div className="max-w-7xl mx-auto pb-28 md:pb-16">
+      <main id="main-content-flow" className="flex-1 min-w-0 p-4 md:p-8 md:pl-6 overflow-x-hidden min-h-screen relative z-10">
+        <div className="max-w-7xl mx-auto pb-28 md:pb-16 w-full min-w-0">
+          {/* Top Persistent Header Toolbar */}
+          <TopHeaderBar
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            currentUser={currentUser}
+            theme={theme}
+            onThemeChange={setTheme}
+            unreadNotificationCount={roleFilteredNotifications.filter(n => !n.read).length}
+            recycleBinCount={recycleBinItems.length}
+            onOpenSearch={() => setIsGlobalSearchOpen(true)}
+          />
+
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -1000,6 +1649,46 @@ export default function App() {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Real-time Global Omni-Search Modal (Cmd+K / Ctrl+K) */}
+      <AnimatePresence>
+        {isGlobalSearchOpen && (
+          <GlobalSearchModal
+            isOpen={isGlobalSearchOpen}
+            onClose={() => setIsGlobalSearchOpen(false)}
+            projects={roleFilteredProjects}
+            studios={studios}
+            editors={editors}
+            currentUser={currentUser}
+            onNavigateToTab={handleSearchNavigateToTab}
+            onNavigateToProject={handleSearchNavigateToProject}
+            onNavigateToStudio={handleSearchNavigateToStudio}
+            onNavigateToEditor={handleSearchNavigateToEditor}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Weekly Data Protection Backup Prompt Modal */}
+      <WeeklyBackupPromptModal
+        isOpen={showWeeklyBackupPrompt && !!currentUser}
+        onClose={() => setShowWeeklyBackupPrompt(false)}
+        onDownload={handleTriggerWeeklyBackup}
+        onSnooze={handleSnoozeWeeklyBackup}
+        lastBackupDate={lastWeeklyBackupDate}
+        downloadSuccess={weeklyBackupDownloadSuccess}
+        totalRecords={{
+          projects: projects.length,
+          runningProjects: projects.filter(p => p.status !== 'closed').length,
+          totalDueBalance: projects.reduce((sum, p) => {
+            const rem = p.remainingBalance !== undefined ? p.remainingBalance : Math.max(0, (p.projectAmount || 0) - (p.advancePayment || 0));
+            return sum + (Number(rem) || 0);
+          }, 0),
+          studios: studios.length,
+          editors: editors.length,
+          expenses: expenses.length,
+          payments: payments.length
+        }}
+      />
 
       {/* Floating Automated Background Runner Toast Notification */}
       <AnimatePresence>

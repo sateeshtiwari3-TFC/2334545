@@ -5,9 +5,10 @@ interface LogoProps {
   size?: number;
   showText?: boolean;
   variant?: 'gold' | 'emerald' | 'dark';
+  title?: string;
 }
 
-export default function Logo({ className = '', size = 100, showText = false, variant = 'gold' }: LogoProps) {
+export default function Logo({ className = '', size = 100, showText = false, variant = 'gold', title }: LogoProps) {
   const uniqueId = useId().replace(/:/g, '');
   const gradientId = `metallic-gradient-${variant}-${uniqueId}`;
 
@@ -122,15 +123,13 @@ export default function Logo({ className = '', size = 100, showText = false, var
 
       {showText && (
         <div className="text-center mt-3 select-none">
-          <h2 className={`${variant === 'dark' ? 'text-slate-900' : 'text-amber-600'} font-bold tracking-[0.25em] text-sm font-display leading-none`}>
-            THE FRAME CUTS
+          <h2 className={`${variant === 'dark' ? 'text-slate-900' : 'text-amber-600'} font-bold tracking-[0.25em] text-sm font-display leading-none uppercase`}>
+            {title || 'THE FRAME CUT'}
           </h2>
-          <div className="flex items-center justify-center space-x-2 mt-1.5 opacity-80">
-            <div className="h-[1px] w-8 bg-gradient-to-r from-transparent to-amber-500/50" />
-            <span className="text-slate-500 text-[8px] font-mono tracking-[0.3em] uppercase leading-none">
-              STUDIO OS
-            </span>
-            <div className="h-[1px] w-8 bg-gradient-to-l from-transparent to-amber-500/50" />
+          <div className="flex items-center justify-center space-x-2 mt-2 opacity-80">
+            <div className="h-[1px] w-12 bg-gradient-to-r from-transparent via-amber-500/70 to-amber-500" />
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <div className="h-[1px] w-12 bg-gradient-to-l from-transparent via-amber-500/70 to-amber-500" />
           </div>
         </div>
       )}

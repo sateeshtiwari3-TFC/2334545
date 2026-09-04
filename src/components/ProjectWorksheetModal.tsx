@@ -19,9 +19,9 @@ import {
   CheckSquare,
   Award
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Project, Revision, Studio, Editor } from '../types';
+import { captureElementToCanvas } from '../utils/pdfExport';
 
 interface ProjectWorksheetModalProps {
   project: Project | null;
@@ -70,10 +70,8 @@ export const ProjectWorksheetModal: React.FC<ProjectWorksheetModalProps> = ({
     if (!worksheetRef.current) return;
     setIsExporting(true);
     try {
-      const canvas = await html2canvas(worksheetRef.current, {
+      const canvas = await captureElementToCanvas(worksheetRef.current, {
         scale: 2,
-        useCORS: true,
-        logging: false,
         backgroundColor: '#ffffff'
       });
 

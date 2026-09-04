@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Lock, 
   Mail, 
@@ -6,24 +6,38 @@ import {
   Eye, 
   EyeOff,
   CloudSun,
-  ShieldAlert
+  ShieldAlert,
+  Sparkles,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './Logo';
 import LoginWeatherClockWidget from './LoginWeatherClockWidget';
 import FullScreenSplashView from './FullScreenSplashView';
+import { getLoginScreenConfig, resolveBackgroundUrl, LoginScreenConfig } from '../utils/loginScreenConfig';
 
 interface LoginViewProps {
   onLogin: (email: string, role: 'admin' | 'editor' | 'studio', id?: string) => Promise<void>;
 }
 
 export default function LoginView({ onLogin }: LoginViewProps) {
-  const [showSplash, setShowSplash] = useState(true);
+  const [config, setConfig] = useState<LoginScreenConfig>(getLoginScreenConfig);
+  const [showSplash, setShowSplash] = useState<boolean>(() => config.showSplashOnStart);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    const handleConfigChange = (e: any) => {
+      if (e.detail) {
+        setConfig(e.detail);
+      }
+    };
+    window.addEventListener('tfc_login_config_updated', handleConfigChange);
+    return () => window.removeEventListener('tfc_login_config_updated', handleConfigChange);
+  }, []);
 
   // Load passwords from localStorage with fallback defaults
   const getPasswords = () => {
@@ -74,6 +88,8 @@ export default function LoginView({ onLogin }: LoginViewProps) {
     }
   };
 
+  const loginBgUrl = resolveBackgroundUrl(config.loginBackgroundPreset, config.loginCustomBgUrl);
+
   return (
     <div className="min-h-screen w-full relative flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 overflow-x-hidden select-none bg-black">
       {/* Full Screen Logo Splash View overlay on app boot */}
@@ -83,11 +99,11 @@ export default function LoginView({ onLogin }: LoginViewProps) {
         )}
       </AnimatePresence>
 
-      {/* Full-screen Misty Pine Forest Wallpaper matching user image */}
+      {/* Full-screen dynamic Wallpaper */}
       <div 
         className="fixed inset-0 bg-cover bg-center bg-no-repeat filter brightness-90 contrast-110 transform scale-105 transition-all duration-1000 pointer-events-none"
         style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1920&q=80')`
+          backgroundImage: `url('${loginBgUrl}')`
         }}
       />
       {/* Dark Vignetting and Ambient Lighting Overlays */}
@@ -103,45 +119,47 @@ export default function LoginView({ onLogin }: LoginViewProps) {
             type="button"
             onClick={() => setShowSplash(true)}
             className="inline-block p-3.5 rounded-full bg-black/50 hover:bg-black/80 hover:scale-105 backdrop-blur-xl border border-white/15 hover:border-gold-500/50 shadow-2xl transition-all cursor-pointer group"
-            title="Click to view full-screen logo splash"
+            title="Click to view full-screen welcome splash"
           >
             <Logo size={60} variant="gold" />
           </button>
           <div>
             <div className="flex items-center justify-center space-x-2">
-              <h1 className="text-2xl sm:text-3xl font-black font-display text-white tracking-[0.25em] drop-shadow-md">
-                THE FRAME CUT
+              <h1 className="text-2xl sm:text-3xl font-black font-display text-white tracking-[0.25em] drop-shadow-md uppercase">
+                {config.loginPortalTitle || 'THE FRAME CUT'}
               </h1>
               <button
                 type="button"
                 onClick={() => setShowSplash(true)}
                 className="px-2 py-0.5 rounded-full bg-gold-500/10 hover:bg-gold-500/20 text-gold-300 border border-gold-500/30 text-[9px] font-mono uppercase tracking-wider transition-all cursor-pointer hidden sm:inline-block"
               >
-                Cover Screen
+                Welcome Cover
               </button>
             </div>
             <p className="text-[10px] text-gold-300 font-mono uppercase tracking-[0.3em] leading-none mt-1.5 font-medium drop-shadow">
-              Studio OS ERP • Live Production Portal
+              {config.loginPortalSubtitle || 'Studio OS ERP • Live Production Portal'}
             </p>
           </div>
         </div>
 
         {/* Grid Split Layout: Weather Clock Widget + Credentials Form */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-center">
+        <div className={`grid grid-cols-1 ${config.showWeatherClockWidget ? 'lg:grid-cols-12' : 'max-w-xl mx-auto'} gap-6 lg:gap-10 items-center`}>
           
           {/* Left Panel: Shoot Weather & Live Clock Capsule Widget */}
-          <div className="lg:col-span-5 order-2 lg:order-1 flex justify-center">
-            <LoginWeatherClockWidget layout="vertical" />
-          </div>
+          {config.showWeatherClockWidget && (
+            <div className="lg:col-span-5 order-2 lg:order-1 flex justify-center">
+              <LoginWeatherClockWidget layout="vertical" />
+            </div>
+          )}
 
           {/* Right Panel: Account Authentication Stadium Glass Card */}
-          <div className="lg:col-span-7 order-1 lg:order-2">
-            <div className="p-6 sm:p-10 rounded-[40px] sm:rounded-[60px] bg-black/40 backdrop-blur-2xl border border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.8)] relative overflow-hidden group hover:border-white/30 transition-all duration-500">
+          <div className={`${config.showWeatherClockWidget ? 'lg:col-span-7' : 'w-full'} order-1 lg:order-2`}>
+            <div className="p-6 sm:p-10 rounded-[40px] sm:rounded-[60px] bg-black/45 backdrop-blur-2xl border border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.8)] relative overflow-hidden group hover:border-white/30 transition-all duration-500">
               
               {/* Top ambient highlight */}
               <div className="absolute top-0 inset-x-0 h-20 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
               
-              <div className="flex items-center justify-between mb-6 relative z-10">
+              <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
                   <h2 className="text-sm font-semibold text-white font-display uppercase tracking-wider drop-shadow-sm">
                     Account Authentication
@@ -155,6 +173,16 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                   <span className="text-[9px] font-mono text-emerald-300 uppercase tracking-widest font-semibold">SECURE NODE</span>
                 </div>
               </div>
+
+              {/* Custom Welcome Note Banner */}
+              {config.loginCustomWelcomeNote && (
+                <div className="mb-5 p-3 rounded-2xl bg-gold-500/10 border border-gold-500/25 flex items-start space-x-2.5">
+                  <Info className="w-4 h-4 text-gold-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-gold-200/90 leading-relaxed font-sans font-light">
+                    {config.loginCustomWelcomeNote}
+                  </p>
+                </div>
+              )}
               
               {error && (
                 <div className="mb-5 p-3.5 rounded-2xl bg-red-500/20 backdrop-blur-md border border-red-500/40 text-xs text-red-200 leading-relaxed font-sans shadow-inner">
@@ -225,20 +253,30 @@ export default function LoginView({ onLogin }: LoginViewProps) {
               </form>
 
               {/* Authorized Username Profiles */}
-              <div className="mt-8 pt-5 border-t border-white/10 text-center relative z-10">
-                <p className="text-[10px] font-mono text-white/60 uppercase tracking-widest mb-2.5 font-medium">
-                  Authorized System Profiles
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[11px] bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10">
-                  <span className="text-white/80 font-sans">
-                    Admin: <strong className="text-gold-300 font-mono">sateesh2000</strong>
-                  </span>
-                  <span className="text-white/30 font-mono">•</span>
-                  <span className="text-white/80 font-sans">
-                    Editor: <strong className="text-gold-300 font-mono">vansh2000</strong>
-                  </span>
+              {config.showDemoLoginButtons && (
+                <div className="mt-8 pt-5 border-t border-white/10 text-center relative z-10">
+                  <p className="text-[10px] font-mono text-white/60 uppercase tracking-widest mb-2.5 font-medium">
+                    Authorized System Profiles
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[11px] bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => { setEmail('sateesh2000'); setPassword('Sateesh@504054'); }}
+                      className="text-white/80 hover:text-gold-300 cursor-pointer font-sans transition-colors"
+                    >
+                      Admin: <strong className="text-gold-300 font-mono">sateesh2000</strong>
+                    </button>
+                    <span className="text-white/30 font-mono">•</span>
+                    <button
+                      type="button"
+                      onClick={() => { setEmail('vansh2000'); setPassword('8889995988'); }}
+                      className="text-white/80 hover:text-gold-300 cursor-pointer font-sans transition-colors"
+                    >
+                      Editor: <strong className="text-gold-300 font-mono">vansh2000</strong>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -248,4 +286,5 @@ export default function LoginView({ onLogin }: LoginViewProps) {
     </div>
   );
 }
+
 

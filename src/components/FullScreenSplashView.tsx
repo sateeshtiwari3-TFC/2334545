@@ -1,17 +1,27 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ChevronUp, ArrowUp, Lock, Sparkles, MoveUp, Sliders } from 'lucide-react';
 import Logo from './Logo';
+import { getLoginScreenConfig, resolveBackgroundUrl, LoginScreenConfig } from '../utils/loginScreenConfig';
 
 interface FullScreenSplashViewProps {
   onSlideComplete: () => void;
 }
 
 export default function FullScreenSplashView({ onSlideComplete }: FullScreenSplashViewProps) {
+  const [config, setConfig] = useState<LoginScreenConfig>(getLoginScreenConfig);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [dragY, setDragY] = useState(0);
   const [isSliding, setIsSliding] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleConfigChange = (e: any) => {
+      if (e.detail) setConfig(e.detail);
+    };
+    window.addEventListener('tfc_login_config_updated', handleConfigChange);
+    return () => window.removeEventListener('tfc_login_config_updated', handleConfigChange);
+  }, []);
 
   // Handle Touch Swipe Up / Down
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -51,6 +61,8 @@ export default function FullScreenSplashView({ onSlideComplete }: FullScreenSpla
     }, 450);
   };
 
+  const bgUrl = resolveBackgroundUrl(config.splashBackgroundPreset, config.splashCustomBgUrl);
+
   return (
     <motion.div
       ref={containerRef}
@@ -62,30 +74,35 @@ export default function FullScreenSplashView({ onSlideComplete }: FullScreenSpla
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onWheel={handleWheel}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-between p-6 sm:p-12 overflow-hidden select-none bg-[#1d1612] cursor-pointer"
-      style={{
-        backgroundImage: `
-          radial-gradient(circle at 50% 35%, rgba(212, 175, 55, 0.15) 0%, transparent 60%),
-          radial-gradient(circle at 50% 100%, rgba(0, 0, 0, 0.8) 0%, transparent 70%),
-          linear-gradient(135deg, #2a1f18 0%, #17110e 50%, #0d0907 100%)
-        `
-      }}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-between p-6 sm:p-12 overflow-hidden select-none bg-black cursor-pointer"
     >
+      {/* Dynamic Wallpaper Background */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat filter brightness-90 contrast-110 transform scale-105 transition-all duration-1000 pointer-events-none"
+        style={{
+          backgroundImage: `url('${bgUrl}')`
+        }}
+      />
+
+      {/* Cinematic Vignetting and Ambient Lighting Overlays */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/45 to-black/90 pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.7)_100%)] pointer-events-none" />
+
       {/* Luxury Metallic Grain / Texture overlay */}
       <div 
-        className="absolute inset-0 opacity-25 pointer-events-none mix-blend-overlay"
+        className="absolute inset-0 opacity-20 pointer-events-none mix-blend-overlay"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`
         }}
       />
 
       {/* Top Header Tag */}
-      <div className="w-full max-w-md flex items-center justify-between pt-4 relative z-10 text-gold-400/70 font-mono text-[10px] uppercase tracking-[0.3em]">
-        <div className="flex items-center space-x-2 bg-black/40 px-3 py-1.5 rounded-full border border-gold-500/20 backdrop-blur-md">
+      <div className="w-full max-w-md flex items-center justify-between pt-4 relative z-10 text-gold-400/80 font-mono text-[10px] uppercase tracking-[0.3em]">
+        <div className="flex items-center space-x-2 bg-black/50 px-3.5 py-1.5 rounded-full border border-gold-500/30 backdrop-blur-md shadow-lg">
           <span className="w-1.5 h-1.5 rounded-full bg-gold-400 animate-ping" />
-          <span>STUDIO OS ERP</span>
+          <span>{config.splashBadgeText || 'STUDIO OS ERP'}</span>
         </div>
-        <div className="flex items-center space-x-1.5 text-gold-300/80">
+        <div className="flex items-center space-x-1.5 text-gold-300/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-md">
           <Lock className="w-3 h-3" />
           <span>PORTAL LOCKED</span>
         </div>
@@ -97,20 +114,20 @@ export default function FullScreenSplashView({ onSlideComplete }: FullScreenSpla
         {/* Glow halo behind logo */}
         <div className="relative">
           <div className="absolute inset-0 rounded-full bg-gold-500/20 blur-3xl scale-125 animate-pulse" />
-          <div className="relative p-8 rounded-full bg-gradient-to-b from-[#3a2c22]/80 to-[#120d0a]/90 border border-gold-500/30 shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-xl group hover:border-gold-400/60 transition-all duration-500">
+          <div className="relative p-8 rounded-full bg-gradient-to-b from-black/80 to-black/95 border border-gold-500/40 shadow-[0_20px_50px_rgba(0,0,0,0.95)] backdrop-blur-xl group hover:border-gold-400/70 transition-all duration-500">
             <Logo size={120} variant="gold" />
           </div>
         </div>
 
         {/* Brand Titles matching luxury embossed image */}
         <div className="space-y-3">
-          <h1 className="text-3xl sm:text-5xl font-black font-display text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-gold-300 to-amber-500 tracking-[0.3em] uppercase drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]">
-            THE FRAME CUT
+          <h1 className="text-3xl sm:text-5xl font-black font-display text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-gold-300 to-amber-500 tracking-[0.25em] uppercase drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
+            {config.splashBrandName || 'THE FRAME CUT'}
           </h1>
           <div className="flex items-center justify-center space-x-3 text-gold-400/90">
             <div className="h-[1px] w-12 bg-gradient-to-r from-transparent to-gold-500/60" />
             <p className="text-xs sm:text-sm font-mono tracking-[0.35em] uppercase font-semibold drop-shadow">
-              LUXURY WEDDING FILM OS
+              {config.splashTagline || 'LUXURY WEDDING FILM OS'}
             </p>
             <div className="h-[1px] w-12 bg-gradient-to-l from-transparent to-gold-500/60" />
           </div>
@@ -130,15 +147,15 @@ export default function FullScreenSplashView({ onSlideComplete }: FullScreenSpla
           <motion.div
             animate={{ y: [0, -8, 0] }}
             transition={{ repeat: Infinity, duration: 1.5, ease: 'easeInOut' }}
-            className="p-3 rounded-full bg-black/50 border border-gold-500/30 group-hover:border-gold-400 group-hover:bg-gold-500/20 shadow-xl backdrop-blur-md"
+            className="p-3 rounded-full bg-black/60 border border-gold-500/40 group-hover:border-gold-400 group-hover:bg-gold-500/20 shadow-xl backdrop-blur-md"
           >
             <ChevronUp className="w-6 h-6 text-gold-400 group-hover:text-gold-200" />
           </motion.div>
           <span className="text-xs font-mono font-bold tracking-[0.25em] uppercase text-gold-300/90 group-hover:text-gold-100 drop-shadow mt-1">
-            SLIDE UP TO LOGIN
+            {config.splashSlideText || 'SLIDE UP TO LOGIN'}
           </span>
           <span className="text-[9px] font-mono text-gray-400 tracking-wider">
-            Swipe up or click to access system
+            Swipe up or click anywhere to access system
           </span>
         </button>
 
@@ -160,3 +177,4 @@ export default function FullScreenSplashView({ onSlideComplete }: FullScreenSpla
     </motion.div>
   );
 }
+

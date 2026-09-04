@@ -67,10 +67,7 @@ export async function seedDatabaseIfEmpty() {
 
     // 1. Seed Default Studios
     const defaultStudios = [
-      { id: 'studio-kk', name: 'Wedding By KK', ownerName: 'Satish Tiwari', phone: '+91 98765 43210', email: 'kk@weddingbykk.com', address: 'Bandra West, Mumbai', gstNumber: '27AAAAA1111A1Z1', notes: 'Premium studio, prefers gold cinema color tone.', createdAt: new Date() },
-      { id: 'studio-moment', name: 'Moment Innovator', ownerName: 'Amit Verma', phone: '+91 98111 22233', email: 'amit@momentinnovator.com', address: 'Saket, New Delhi', gstNumber: '07BBBBB2222B2Z2', notes: 'High volume pre-weddings and weddings.', createdAt: new Date() },
-      { id: 'studio-kriti', name: 'Kriti Photo', ownerName: 'Kriti Sen', phone: '+91 95555 66677', email: 'kriti@kritiphoto.com', address: 'Salt Lake, Kolkata', gstNumber: '19CCCCC3333C3Z3', notes: 'Specializes in artistic traditional events.', createdAt: new Date() },
-      { id: 'studio-licious', name: 'The Wedding Licious', ownerName: 'Rajesh Mehta', phone: '+91 99999 88888', email: 'rajesh@weddinglicious.com', address: 'Indiranagar, Bengaluru', gstNumber: '29DDDDD4444D4Z4', notes: 'Luxury high-budget cinematic weddings.', createdAt: new Date() }
+      { id: 'studio-kk', name: 'Wedding By KK', ownerName: 'Satish Tiwari', phone: '+91 98765 43210', email: 'kk@weddingbykk.com', address: 'Civil Lines, Raipur, Chhattisgarh - 492001', notes: 'Premium studio, prefers gold cinema color tone.', createdAt: new Date() }
     ];
 
     defaultStudios.forEach(studio => {
@@ -119,11 +116,11 @@ export async function seedDatabaseIfEmpty() {
         assignedEditorName: 'Vansh Tiwari',
         status: 'review',
         priority: 'high',
-        projectAmount: 85000,
+        projectAmount: 241000,
         editorPayment: 25000,
-        otherExpenses: 5000,
-        advancePayment: 40000,
-        remainingBalance: 45000,
+        otherExpenses: 0,
+        advancePayment: 140000,
+        remainingBalance: 101000,
         notes: 'Needs heavy cinematic warm tones. Deliver 4K Teaser and 30-min Highlights.',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -135,99 +132,6 @@ export async function seedDatabaseIfEmpty() {
         deliveryFolder: '/Deliveries/Aarav_Meera_Final',
         rawDataFolder: '/Raw/WD_A/Aarav_Meera',
         finalExportFolder: '/Exports/Aarav_Meera_v2'
-      },
-      {
-        id: 'PRJ-2026-002',
-        coupleName: 'Rohan & Dia',
-        brideName: 'Dia',
-        groomName: 'Rohan',
-        couplePhoto: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600',
-        studioId: 'studio-moment',
-        studioName: 'Moment Innovator',
-        eventType: 'Complete Wedding Film',
-        shootDate: '2026-06-02',
-        deliveryDate: '2026-07-15',
-        assignedEditorId: 'editor-vansh',
-        assignedEditorName: 'Vansh Tiwari',
-        status: 'editing',
-        priority: 'medium',
-        projectAmount: 120000,
-        editorPayment: 35000,
-        otherExpenses: 8000,
-        advancePayment: 60000,
-        remainingBalance: 60000,
-        notes: 'Includes drone footage and heavy transitions. Bride requested classic romantic songs.',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        hardDiskName: 'Seagate Red Studio-4',
-        dataSize: '2.4 TB',
-        backupStatus: 'pending',
-        googleDriveLink: 'https://drive.google.com/drive/folders/rohan_dia',
-        deliveryFolder: '/Deliveries/Rohan_Dia_Draft',
-        rawDataFolder: '/Raw/Seagate_4/Rohan_Dia',
-        finalExportFolder: '/Exports/Rohan_Dia_v1'
-      },
-      {
-        id: 'PRJ-2026-003',
-        coupleName: 'Vikram & Pooja',
-        brideName: 'Pooja',
-        groomName: 'Vikram',
-        couplePhoto: 'https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&q=80&w=600',
-        studioId: 'studio-licious',
-        studioName: 'The Wedding Licious',
-        eventType: 'Luxury Pre-Wedding Film',
-        shootDate: '2026-06-20',
-        deliveryDate: '2026-07-28',
-        assignedEditorId: 'editor-sid',
-        assignedEditorName: 'Siddharth Roy',
-        status: 'data_received',
-        priority: 'urgent',
-        projectAmount: 95000,
-        editorPayment: 30000,
-        otherExpenses: 3000,
-        advancePayment: 30000,
-        remainingBalance: 65000,
-        notes: 'Very high priority. Shot at locations in Udaipur. Color grading must be outstanding.',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        hardDiskName: 'SanDisk Extreme Pro 01',
-        dataSize: '950 GB',
-        backupStatus: 'pending',
-        googleDriveLink: 'https://drive.google.com/drive/folders/vikram_pooja',
-        deliveryFolder: '/Deliveries/Vikram_Pooja',
-        rawDataFolder: '/Raw/SanDisk_01/Vikram_Pooja',
-        finalExportFolder: '/Exports/Vikram_Pooja'
-      },
-      {
-        id: 'PRJ-2026-004',
-        coupleName: 'Kabir & Rhea',
-        couplePhoto: 'https://images.unsplash.com/photo-1621616875550-de064421f5f3?auto=format&fit=crop&q=80&w=600',
-        brideName: 'Rhea',
-        groomName: 'Kabir',
-        studioId: 'studio-kriti',
-        studioName: 'Kriti Photo',
-        eventType: 'Traditional Highlight + Teaser',
-        shootDate: '2026-04-18',
-        deliveryDate: '2026-05-25',
-        assignedEditorId: 'editor-sid',
-        assignedEditorName: 'Siddharth Roy',
-        status: 'delivered',
-        priority: 'low',
-        projectAmount: 70000,
-        editorPayment: 20000,
-        otherExpenses: 2000,
-        advancePayment: 70000,
-        remainingBalance: 0,
-        notes: 'Fully approved. Clean simple narrative cuts.',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        hardDiskName: 'WD Elements 12TB',
-        dataSize: '1.1 TB',
-        backupStatus: 'backed_up',
-        googleDriveLink: 'https://drive.google.com/drive/folders/kabir_rhea',
-        deliveryFolder: '/Deliveries/Kabir_Rhea_Approved',
-        rawDataFolder: '/Raw/WD_12TB/Kabir_Rhea',
-        finalExportFolder: '/Exports/Kabir_Rhea_Final'
       }
     ];
 
@@ -252,11 +156,7 @@ export async function seedDatabaseIfEmpty() {
     // 6. Seed Calendar Events
     const defaultEvents = [
       { id: 'evt-today-1', title: 'Master Cut Export & QC Review', start: '2026-08-09', type: 'delivery', projectId: 'PRJ-2026-001', coupleName: 'Aarav & Meera', color: '#EF4444' },
-      { id: 'evt-tomorrow-1', title: 'Client Revision Approval Call', start: '2026-08-10', type: 'revision', projectId: 'PRJ-2026-003', coupleName: 'Vikram & Pooja', color: '#F59E0B' },
-      { id: 'evt-1', title: 'Deliver Aarav & Meera Teaser', start: '2026-07-05', type: 'delivery', projectId: 'PRJ-2026-001', coupleName: 'Aarav & Meera', color: '#EAB308' },
-      { id: 'evt-2', title: 'Deliver Rohan & Dia Highlights', start: '2026-07-15', type: 'delivery', projectId: 'PRJ-2026-002', coupleName: 'Rohan & Dia', color: '#10B981' },
-      { id: 'evt-3', title: 'Udaipur Shoot Date Reference', start: '2026-06-20', type: 'shoot', projectId: 'PRJ-2026-003', coupleName: 'Vikram & Pooja', color: '#3B82F6' },
-      { id: 'evt-4', title: 'Revision Deadline Vikram & Pooja', start: '2026-07-02', type: 'revision', projectId: 'PRJ-2026-003', coupleName: 'Vikram & Pooja', color: '#EF4444' }
+      { id: 'evt-1', title: 'Deliver Aarav & Meera Teaser', start: '2026-07-05', type: 'delivery', projectId: 'PRJ-2026-001', coupleName: 'Aarav & Meera', color: '#EAB308' }
     ];
 
     defaultEvents.forEach(evt => {
@@ -264,10 +164,103 @@ export async function seedDatabaseIfEmpty() {
       batch.set(docRef, evt);
     });
 
-    // 8. Seed Default Revisions
+    // 8. Seed Default Revisions & Audit Log Entries in 'revisionHistory'
     const defaultRevisions = [
-      { id: 'rev-001', projectId: 'PRJ-2026-001', revisionNumber: 1, notes: 'Studio asked to replace transition at 2:15 and add more groom close-up shots during vows.', date: '2026-06-28', status: 'resolved', createdAt: new Date() },
-      { id: 'rev-002', projectId: 'PRJ-2026-001', revisionNumber: 2, notes: 'Client requested to change song during sangeet sequence.', date: '2026-06-30', status: 'pending', createdAt: new Date() }
+      { 
+        id: 'rev-001', 
+        projectId: 'PRJ-2026-001', 
+        projectCoupleName: 'Aarav & Meera',
+        studioName: 'Wedding By KK',
+        type: 'revision',
+        category: 'revision',
+        revisionNumber: 1, 
+        notes: 'Studio asked to replace transition at 2:15 and add more groom close-up shots during vows.', 
+        date: '2026-06-28', 
+        status: 'resolved', 
+        performedBy: 'Satish Tiwari',
+        performedByRole: 'admin',
+        createdAt: new Date('2026-06-28T14:30:00Z') 
+      },
+      { 
+        id: 'rev-002', 
+        projectId: 'PRJ-2026-001', 
+        projectCoupleName: 'Aarav & Meera',
+        studioName: 'Wedding By KK',
+        type: 'revision',
+        category: 'revision',
+        revisionNumber: 2, 
+        notes: 'Client requested to change song during sangeet sequence.', 
+        date: '2026-06-30', 
+        status: 'pending', 
+        performedBy: 'Satish Tiwari',
+        performedByRole: 'admin',
+        createdAt: new Date('2026-06-30T10:15:00Z') 
+      },
+      {
+        id: 'audit-001',
+        projectId: 'PRJ-2026-001',
+        projectCoupleName: 'Aarav & Meera',
+        studioName: 'Wedding By KK',
+        type: 'creation',
+        category: 'general',
+        notes: 'Project created with contract amount ₹2,41,000 and advance ₹1,40,000 for Wedding By KK.',
+        date: '2026-05-15',
+        status: 'logged',
+        performedBy: 'Satish Tiwari',
+        performedByRole: 'admin',
+        createdAt: new Date('2026-05-15T09:00:00Z')
+      },
+      {
+        id: 'audit-002',
+        projectId: 'PRJ-2026-001',
+        projectCoupleName: 'Aarav & Meera',
+        studioName: 'Wedding By KK',
+        type: 'assignment_change',
+        category: 'assignment',
+        changedField: 'assignedEditor',
+        previousValue: 'Unassigned',
+        newValue: 'Vansh Tiwari',
+        notes: 'Lead Video Editor assigned to Vansh Tiwari (Wage: ₹45,000).',
+        date: '2026-05-16',
+        status: 'logged',
+        performedBy: 'Satish Tiwari',
+        performedByRole: 'admin',
+        createdAt: new Date('2026-05-16T11:20:00Z')
+      },
+      {
+        id: 'audit-003',
+        projectId: 'PRJ-2026-001',
+        projectCoupleName: 'Aarav & Meera',
+        studioName: 'Wedding By KK',
+        type: 'status_change',
+        category: 'status',
+        changedField: 'status',
+        previousValue: 'data_received',
+        newValue: 'editing',
+        notes: 'Project workflow advanced from Data Received to Active Editing.',
+        date: '2026-05-20',
+        status: 'logged',
+        performedBy: 'Vansh Tiwari',
+        performedByRole: 'editor',
+        createdAt: new Date('2026-05-20T16:45:00Z')
+      },
+      {
+        id: 'audit-004',
+        projectId: 'PRJ-2026-001',
+        projectCoupleName: 'Aarav & Meera',
+        studioName: 'Wedding By KK',
+        type: 'amount_change',
+        category: 'financial',
+        changedField: 'advancePayment',
+        previousValue: 0,
+        newValue: 140000,
+        notes: 'Advance receipt of ₹1,40,000 verified. Outstanding balance calculated at ₹1,01,000.',
+        date: '2026-05-15',
+        status: 'logged',
+        performedBy: 'Satish Tiwari',
+        performedByRole: 'admin',
+        createdAt: new Date('2026-05-15T10:00:00Z')
+      }
     ];
 
     defaultRevisions.forEach(rev => {
@@ -278,8 +271,7 @@ export async function seedDatabaseIfEmpty() {
     // 9. Seed Default Tasks
     const defaultTasks = [
       { id: 'tsk-001', projectId: 'PRJ-2026-001', projectCoupleName: 'Aarav & Meera', title: 'Draft multi-cam wedding sync', description: 'Align main 3 cameras and separate field recorder audio', assignedTo: 'editor-vansh', dueDate: '2026-06-15', status: 'completed', createdAt: new Date() },
-      { id: 'tsk-002', projectId: 'PRJ-2026-001', projectCoupleName: 'Aarav & Meera', title: 'Color grading pass', description: 'Apply warm lut and balance shadows in vows scene', assignedTo: 'editor-vansh', dueDate: '2026-06-28', status: 'in_progress', createdAt: new Date() },
-      { id: 'tsk-003', projectId: 'PRJ-2026-002', projectCoupleName: 'Rohan & Dia', title: 'Teaser first cut', description: 'Create dynamic 60s Instagram-ready teaser with high beats', assignedTo: 'editor-vansh', dueDate: '2026-07-02', status: 'pending', createdAt: new Date() }
+      { id: 'tsk-002', projectId: 'PRJ-2026-001', projectCoupleName: 'Aarav & Meera', title: 'Color grading pass', description: 'Apply warm lut and balance shadows in vows scene', assignedTo: 'editor-vansh', dueDate: '2026-06-28', status: 'in_progress', createdAt: new Date() }
     ];
 
     defaultTasks.forEach(tsk => {
@@ -298,22 +290,10 @@ export async function seedDatabaseIfEmpty() {
       batch.set(docRef, notif);
     });
 
-    // 11. Seed Default Payment History
-    const defaultPayments = [
-      { id: 'pay-001', entityId: 'studio-kk', entityType: 'studio', projectId: 'PRJ-2026-001', projectCoupleName: 'Aarav & Meera', amount: 40000, date: '2026-05-15', paymentMethod: 'UPI', notes: 'Advance payment received via GPay from Wedding By KK', receivedFrom: 'Satish Tiwari', createdAt: new Date() },
-      { id: 'pay-002', entityId: 'studio-moment', entityType: 'studio', projectId: 'PRJ-2026-002', projectCoupleName: 'Rohan & Dia', amount: 60000, date: '2026-06-03', paymentMethod: 'Bank Transfer', notes: 'First milestone payment received from Moment Innovator', receivedFrom: 'Amit Verma', createdAt: new Date() },
-      { id: 'pay-003', entityId: 'editor-vansh', entityType: 'editor', projectId: 'PRJ-2026-001', projectCoupleName: 'Aarav & Meera', amount: 15000, date: '2026-06-18', paymentMethod: 'UPI', notes: 'Partial payout sent to Vansh Tiwari for Aarav & Meera teaser cut', createdAt: new Date() },
-      { id: 'pay-004', entityId: 'studio-kriti', entityType: 'studio', projectId: 'PRJ-2026-004', projectCoupleName: 'Kabir & Rhea', amount: 70000, date: '2026-04-20', paymentMethod: 'Bank Transfer', notes: 'Full project payment received from Kriti Photo', receivedFrom: 'Kriti Sen', createdAt: new Date() }
-    ];
-
-    defaultPayments.forEach(pay => {
-      const docRef = doc(db, 'editorPayments', pay.id);
-      batch.set(docRef, pay);
-    });
-
     await batch.commit();
     console.log("Database seeded successfully!");
   } catch (error) {
     console.error("Error seeding database:", error);
   }
 }
+

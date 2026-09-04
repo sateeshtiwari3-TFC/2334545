@@ -27,6 +27,9 @@ interface BackgroundTaskRunnerWidgetProps {
   isRunning: boolean;
   lastCheckTime: Date | null;
   checkCount: number;
+  pushPermissionState?: NotificationPermission | 'unsupported';
+  onRequestPushPermission?: () => Promise<boolean>;
+  onSendTestPush?: () => Promise<boolean>;
   onManualCheck: () => Promise<void>;
 }
 
@@ -36,6 +39,9 @@ export default function BackgroundTaskRunnerWidget({
   isRunning,
   lastCheckTime,
   checkCount,
+  pushPermissionState = 'default',
+  onRequestPushPermission,
+  onSendTestPush,
   onManualCheck
 }: BackgroundTaskRunnerWidgetProps) {
   const [createdTestSuccess, setCreatedTestSuccess] = useState<string | null>(null);
@@ -148,6 +154,68 @@ export default function BackgroundTaskRunnerWidget({
             <RefreshCw className={`w-3.5 h-3.5 ${isRunning ? 'animate-spin' : ''}`} />
             <span>{isRunning ? 'Scanning...' : 'Run Check Now'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* Browser Push Notification Banner */}
+      <div className="p-4 rounded-2xl bg-charcoal-950/90 border border-gold-500/20 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono">
+        <div className="flex items-center space-x-3">
+          <div className={`p-2.5 rounded-xl shrink-0 ${
+            pushPermissionState === 'granted' 
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' 
+              : pushPermissionState === 'denied'
+              ? 'bg-red-500/10 text-red-400 border border-red-500/30'
+              : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+          }`}>
+            <Bell className="w-5 h-5 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="font-bold text-white">Browser Push Notifications</span>
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${
+                pushPermissionState === 'granted'
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  : pushPermissionState === 'denied'
+                  ? 'bg-red-500/15 text-red-300 border-red-500/30'
+                  : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+              }`}>
+                {pushPermissionState === 'granted' && '✓ Active'}
+                {pushPermissionState === 'default' && 'Permission Required'}
+                {pushPermissionState === 'denied' && 'Blocked in Browser'}
+                {pushPermissionState === 'unsupported' && 'Unsupported'}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              {pushPermissionState === 'granted'
+                ? 'Native browser desktop push alerts will trigger automatically when a project deadline is within 24 hours.'
+                : 'Enable browser permissions to receive instant desktop push alerts when project deadlines approach 24 hours.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2 shrink-0">
+          {pushPermissionState !== 'granted' && onRequestPushPermission && (
+            <button
+              type="button"
+              onClick={onRequestPushPermission}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-gold-500 hover:from-amber-400 hover:to-gold-400 text-charcoal-950 font-bold text-xs flex items-center space-x-1.5 shadow-md transition-all cursor-pointer"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>Enable Push Alerts</span>
+            </button>
+          )}
+
+          {onSendTestPush && (
+            <button
+              type="button"
+              onClick={onSendTestPush}
+              className="px-3.5 py-2 rounded-xl bg-charcoal-800 hover:bg-charcoal-700 text-gold-300 border border-gold-500/30 font-bold text-xs flex items-center space-x-1.5 transition-all cursor-pointer"
+              title="Trigger a test browser push notification"
+            >
+              <Zap className="w-3.5 h-3.5 text-gold-400" />
+              <span>Test Push Notification</span>
+            </button>
+          )}
         </div>
       </div>
 

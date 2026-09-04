@@ -247,13 +247,13 @@ export default function LoginWeatherClockWidget({
     <div className={`w-full ${layoutMode === 'vertical' ? 'max-w-[320px] sm:max-w-[340px]' : 'max-w-4xl'} mx-auto select-none relative transition-all duration-300`}>
       {/* HORIZONTAL WIDE LANDSCAPE BAR LAYOUT */}
       {layoutMode === 'horizontal' ? (
-        <div className="rounded-3xl sm:rounded-[32px] bg-black/40 backdrop-blur-2xl border border-white/20 p-4 sm:p-5 shadow-[0_15px_40px_rgba(0,0,0,0.7)] relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4 group hover:border-white/30 transition-all duration-500">
+        <div className="rounded-2xl sm:rounded-3xl bg-black/40 backdrop-blur-2xl border border-white/20 p-3.5 sm:p-4 lg:p-5 shadow-[0_15px_40px_rgba(0,0,0,0.7)] relative overflow-hidden flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3.5 sm:gap-4 group hover:border-white/30 transition-all duration-500 w-full min-w-0">
           {/* Subtle glass glow */}
           <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
 
           {/* Left: Aperture Clock Lens Portal */}
-          <div className="flex items-center space-x-4 shrink-0 w-full md:w-auto">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border border-white/25 overflow-hidden shadow-[inset_0_4px_15px_rgba(0,0,0,0.6)] relative flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-500">
+          <div className="flex items-center space-x-3 sm:space-x-4 min-w-0 w-full xl:w-auto">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 rounded-full border border-white/25 overflow-hidden shadow-[inset_0_4px_15px_rgba(0,0,0,0.6)] relative flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-500">
               <img 
                 src="https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=600&q=80" 
                 alt="Forest Canopy" 
@@ -262,76 +262,76 @@ export default function LoginWeatherClockWidget({
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/30" />
 
               <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-1 text-center">
-                <span className="text-[10px] sm:text-[11px] font-mono font-bold tracking-wider text-white drop-shadow">
+                <span className="text-[9px] sm:text-[10px] lg:text-[11px] font-mono font-bold tracking-wider text-white drop-shadow">
                   {formattedTime}
                 </span>
-                <span className="text-[8px] font-mono text-emerald-300 bg-black/60 px-1.5 py-0.2 rounded-full border border-emerald-500/30">
+                <span className="text-[7px] sm:text-[8px] font-mono text-emerald-300 bg-black/60 px-1 py-0.2 rounded-full border border-emerald-500/30">
                   LIVE CLOCK
                 </span>
               </div>
             </div>
 
             {/* City Name & Date Info */}
-            <div className="flex flex-col text-left space-y-0.5">
-              <div className="flex items-center space-x-2">
+            <div className="flex flex-col text-left space-y-0.5 min-w-0 flex-1">
+              <div className="flex items-center space-x-2 flex-wrap min-w-0">
                 <button
                   type="button"
                   onClick={() => setShowLocationModal(true)}
-                  className="flex items-center space-x-1 text-xl sm:text-2xl font-bold font-sans text-white hover:text-gold-300 transition-colors cursor-pointer"
+                  className="flex items-center space-x-1 text-lg sm:text-xl lg:text-2xl font-bold font-sans text-white hover:text-gold-300 transition-colors cursor-pointer truncate"
                   title="Click to change shoot location"
                 >
-                  <span>{selectedCity.name}</span>
-                  <ChevronDown className="w-4 h-4 text-gold-400" />
+                  <span className="truncate">{selectedCity.name}</span>
+                  <ChevronDown className="w-4 h-4 text-gold-400 shrink-0" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowLocationModal(true)}
-                  className="px-2 py-0.5 rounded-full bg-gold-500/15 hover:bg-gold-500/30 border border-gold-500/30 text-[9px] font-mono text-gold-300 transition-all cursor-pointer flex items-center space-x-1"
+                  className="px-2 py-0.5 rounded-full bg-gold-500/15 hover:bg-gold-500/30 border border-gold-500/30 text-[9px] font-mono text-gold-300 transition-all cursor-pointer flex items-center space-x-1 shrink-0"
                 >
                   <MapPin className="w-2.5 h-2.5" />
                   <span>Set Location</span>
                 </button>
               </div>
 
-              <div className="flex items-center space-x-2 text-xs text-gray-300 font-mono">
-                <span className="font-semibold text-white">{formattedDate}</span>
-                <span>•</span>
-                <span className="text-gold-300">{weather?.conditionText || 'Misty Woodland'}</span>
+              <div className="flex items-center space-x-2 text-[11px] sm:text-xs text-gray-300 font-mono truncate">
+                <span className="font-semibold text-white shrink-0">{formattedDate}</span>
+                <span className="shrink-0">•</span>
+                <span className="text-gold-300 truncate">{weather?.conditionText || 'Misty Woodland'}</span>
               </div>
 
-              <p className="text-[11px] text-gray-400 font-sans line-clamp-1 max-w-sm">
+              <p className="text-[10px] sm:text-[11px] text-gray-400 font-sans truncate max-w-full">
                 🎬 {weather?.shootAdvice || 'Optimal Natural Light for Outdoor Shoots'}
               </p>
             </div>
           </div>
 
           {/* Right: Weather Metrics & Controls */}
-          <div className="flex items-center space-x-3 shrink-0 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-white/10 pt-3 md:pt-0">
+          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 w-full xl:w-auto justify-between xl:justify-end border-t xl:border-t-0 border-white/10 pt-2.5 xl:pt-0">
             {/* Weather Metrics Joined Bar */}
-            <div className="flex items-center bg-white/10 backdrop-blur-md rounded-2xl p-1.5 border border-white/20 shadow-inner space-x-1.5 text-xs font-mono">
-              <div className="flex items-center space-x-1.5 px-3 py-1.2 rounded-xl bg-black/40 text-white border border-white/10">
+            <div className="flex items-center bg-white/10 backdrop-blur-md rounded-2xl p-1 sm:p-1.5 border border-white/20 shadow-inner space-x-1 sm:space-x-1.5 text-[11px] sm:text-xs font-mono min-w-0 overflow-x-auto custom-scrollbar">
+              <div className="flex items-center space-x-1 sm:space-x-1.5 px-2 sm:px-3 py-1 rounded-xl bg-black/40 text-white border border-white/10 shrink-0">
                 {weather?.isNight ? <Moon className="w-3.5 h-3.5 text-sky-200" /> : <Sun className="w-3.5 h-3.5 text-amber-300" />}
                 <span className="font-bold">{weather ? `${weather.tempC}°C` : '16°C'}</span>
               </div>
 
-              <div className="flex items-center space-x-1.5 px-3 py-1.2 rounded-xl bg-black/40 text-white border border-white/10">
+              <div className="flex items-center space-x-1 sm:space-x-1.5 px-2 sm:px-3 py-1 rounded-xl bg-black/40 text-white border border-white/10 shrink-0">
                 <Droplets className="w-3.5 h-3.5 text-sky-300" />
                 <span className="font-bold">{weather ? `${weather.humidity}%` : '85%'}</span>
               </div>
 
-              <div className="flex items-center space-x-1.5 px-3 py-1.2 rounded-xl bg-black/40 text-white border border-white/10">
+              <div className="flex items-center space-x-1 sm:space-x-1.5 px-2 sm:px-3 py-1 rounded-xl bg-black/40 text-white border border-white/10 shrink-0">
                 <Wind className="w-3.5 h-3.5 text-emerald-300" />
                 <span className="font-bold">{weather ? `${weather.windSpeedMs}m/s` : '4m/s'}</span>
               </div>
             </div>
 
             {/* Refresh + Layout Switcher */}
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center space-x-1 sm:space-x-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => fetchWeather(selectedCity.lat, selectedCity.lon)}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition-colors cursor-pointer border border-white/10"
+                className="p-1.5 sm:p-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition-colors cursor-pointer border border-white/10"
                 title="Refresh weather"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-gold-400' : ''}`} />
@@ -340,7 +340,7 @@ export default function LoginWeatherClockWidget({
               <button
                 type="button"
                 onClick={() => setLayoutMode('vertical')}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition-colors cursor-pointer border border-white/10 text-[10px] font-mono"
+                className="p-1.5 sm:p-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition-colors cursor-pointer border border-white/10 text-[10px] font-mono"
                 title="Switch to vertical capsule format"
               >
                 ↕ Tower

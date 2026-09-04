@@ -1,8 +1,79 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
+    // User Profiles collection
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Projects collection
+    match /projects/{projectId} {
+      allow read, write: if true;
+    }
+
+    // Studios directory
+    match /studios/{studioId} {
+      allow read, write: if true;
+    }
+
+    // Editors directory
+    match /editors/{editorId} {
+      allow read, write: if true;
+    }
+
+    // Studio & General Expenses
+    match /expenses/{expenseId} {
+      allow read, write: if true;
+    }
+
+    // System notifications and automated alerts
+    match /notifications/{notificationId} {
+      allow read, write: if true;
+    }
+
+    // Calendar events and timeline milestones
+    match /calendar/{eventId} {
+      allow read, write: if true;
+    }
+
+    // Revision history logs
+    match /revisionHistory/{revId} {
+      allow read, write: if true;
+    }
+
+    // Financial ledger transactions & editor payments
+    match /editorPayments/{paymentId} {
+      allow read, write: if true;
+    }
+
+    // Invoices and GST bills
+    match /studioInvoices/{invoiceId} {
+      allow read, write: if true;
+    }
+
+    match /invoices/{invoiceId} {
+      allow read, write: if true;
+    }
+
+    // Production tasks
+    match /tasks/{taskId} {
+      allow read, write: if true;
+    }
+
+    // Safe Trash & Recycle Bin collection
+    match /recycle_bin/{binId} {
+      allow read, write: if true;
+    }
+
+    // Project blueprints and templates
+    match /project_templates/{templateId} {
+      allow read, write: if true;
+    }
+
+    // Audit logs trail
+    match /audit_logs/{auditId} {
       allow read, write: if true;
     }
   }
 }
+

@@ -1,610 +1,419 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Building2, 
-  User, 
-  Phone, 
-  MapPin, 
-  FileText, 
-  TrendingUp, 
-  Clock, 
-  Briefcase, 
   Plus, 
-  Edit, 
-  Trash2, 
-  BookOpen, 
-  DollarSign, 
-  ChevronRight,
+  Check, 
   Info,
-  Check
+  Trash2,
+  Sparkles,
+  ArrowRight,
+  BarChart3,
+  TrendingUp,
+  Film,
+  IndianRupee
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import SwipeableCard from './SwipeableCard';
-import ParallaxCard from './ParallaxCard';
-import { Studio, Project, PaymentHistory } from '../types';
-import Logo from './Logo';
-import { compressImage } from '../utils';
+import { Studio, Project, PaymentHistory, UserRole } from '../types';
+import { StudiosHeaderKpi } from './studios/StudiosHeaderKpi';
+import { StudiosFilterBar } from './studios/StudiosFilterBar';
+import { StudioCardGrid } from './studios/StudioCardGrid';
+import { StudioListView } from './studios/StudioListView';
+import { StudioDetailDrawer } from './studios/StudioDetailDrawer';
+import { StudioFormModal } from './studios/StudioFormModal';
+import { StudioWhatsAppModal } from './studios/StudioWhatsAppModal';
+import { StudioPaymentModal } from './studios/StudioPaymentModal';
+import { StudioAnalyticsPanel } from './studios/StudioAnalyticsPanel';
 
 interface StudiosViewProps {
   studios: Studio[];
   projects: Project[];
   payments?: PaymentHistory[];
+  userRole?: UserRole;
   onAddStudio: (studio: Omit<Studio, 'createdAt'>) => Promise<void>;
   onUpdateStudio: (id: string, updates: Partial<Studio>) => Promise<void>;
   onDeleteStudio: (id: string) => Promise<void>;
+  onLogPayment?: (payment: Omit<PaymentHistory, 'id' | 'createdAt'>) => Promise<void>;
 }
 
-const StudiosView = React.memo(function StudiosView({
+const StudiosView: React.FC<StudiosViewProps> = React.memo(function StudiosView({
   studios,
   projects,
   payments = [],
+  userRole = 'admin',
   onAddStudio,
   onUpdateStudio,
-  onDeleteStudio
-}: StudiosViewProps) {
+  onDeleteStudio,
+  onLogPayment
+}) {
+  // Drawer & Modal States
   const [selectedStudio, setSelectedStudio] = useState<Studio | null>(null);
-  const [isLedgerOpen, setIsLedgerOpen] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingStudio, setEditingStudio] = useState<Studio | null>(null);
+  
+  // WhatsApp & Payment Modal States
+  const [whatsAppStudio, setWhatsAppStudio] = useState<Studio | null>(null);
+  const [paymentStudio, setPaymentStudio] = useState<Studio | null>(null);
 
-  // Custom toast and confirmation states
+  // Search, Filter & View Controls
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [activeViewTab, setActiveViewTab] = useState<'directory' | 'analytics'>('directory');
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('name_asc');
+
+  // Delete confirmation & Toast states
   const [studioToDeleteId, setStudioToDeleteId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ title: string; desc: string } | null>(null);
 
   const triggerToast = (title: string, desc: string) => {
     setToast({ title, desc });
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => setToast(null), 3500);
   };
 
-  // Form states
-  const [name, setName] = useState('');
-  const [ownerName, setOwnerName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [address, setAddress] = useState('');
-  const [gstNumber, setGstNumber] = useState('');
-  const [notes, setNotes] = useState('');
-  const [logoUrl, setLogoUrl] = useState('');
-  const [upiId, setUpiId] = useState('');
-  const [paymentLink, setPaymentLink] = useState('');
+  const handleQuickCopy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    triggerToast(`${label} Copied`, `${text} copied to clipboard.`);
+  };
 
-  const openCreateModal = () => {
+  // Open Create Studio Modal
+  const handleOpenCreateModal = () => {
     setEditingStudio(null);
-    setName('');
-    setOwnerName('');
-    setPhone('');
-    setEmail('');
-    setAddress('');
-    setGstNumber('');
-    setNotes('');
-    setLogoUrl('');
-    setUpiId('');
-    setPaymentLink('');
-    setIsModalOpen(true);
+    setIsFormModalOpen(true);
   };
 
-  const openEditModal = (studio: Studio, e: React.MouseEvent) => {
+  // Open Edit Studio Modal
+  const handleOpenEditModal = (studio: Studio, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingStudio(studio);
-    setName(studio.name);
-    setOwnerName(studio.ownerName);
-    setPhone(studio.phone);
-    setEmail(studio.email);
-    setAddress(studio.address);
-    setGstNumber(studio.gstNumber || '');
-    setNotes(studio.notes || '');
-    setLogoUrl(studio.logoUrl || '');
-    setUpiId(studio.upiId || '');
-    setPaymentLink(studio.paymentLink || '');
-    setIsModalOpen(true);
+    setIsFormModalOpen(true);
   };
 
-  const handleSaveStudio = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      let finalLogoUrl = logoUrl;
-      if (finalLogoUrl && finalLogoUrl.startsWith('data:image/')) {
-        finalLogoUrl = await compressImage(finalLogoUrl, 400, 400, 0.7);
-      }
-      if (editingStudio) {
-        await onUpdateStudio(editingStudio.id, {
-          name,
-          ownerName,
-          phone,
-          email,
-          address,
-          gstNumber,
-          notes,
-          logoUrl: finalLogoUrl,
-          upiId,
-          paymentLink
-        });
-        if (selectedStudio?.id === editingStudio.id) {
-          setSelectedStudio({
-            ...selectedStudio,
-            name,
-            ownerName,
-            phone,
-            email,
-            address,
-            gstNumber,
-            notes,
-            logoUrl: finalLogoUrl,
-            upiId,
-            paymentLink
-          });
-        }
-      } else {
-        const generatedId = `studio-${name.toLowerCase().replace(/\s+/g, '-')}`;
-        await onAddStudio({
-          id: generatedId,
-          name,
-          ownerName,
-          phone,
-          email,
-          address,
-          gstNumber,
-          notes,
-          logoUrl: finalLogoUrl,
-          upiId,
-          paymentLink
-        });
-      }
-      setIsModalOpen(false);
-    } catch (error: any) {
-      console.error("Error saving studio:", error);
-      alert("Failed to save Studio Partner: " + (error?.message || error || "Unknown error"));
-    }
+  // Open WhatsApp Modal
+  const handleOpenWhatsApp = (studio: Studio, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setWhatsAppStudio(studio);
   };
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  // Delete Request
+  const handleDeleteRequest = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setStudioToDeleteId(id);
   };
 
+  // Save (Create / Update) Studio
+  const handleSaveStudio = async (studioData: Omit<Studio, 'createdAt'>, isEdit: boolean) => {
+    if (isEdit && editingStudio) {
+      await onUpdateStudio(editingStudio.id, studioData);
+      if (selectedStudio?.id === editingStudio.id) {
+        setSelectedStudio({ ...selectedStudio, ...studioData });
+      }
+    } else {
+      await onAddStudio(studioData);
+    }
+  };
+
+  // Filter & Sort Studio Pipeline
+  const filteredAndSortedStudios = useMemo(() => {
+    return studios
+      .filter(studio => {
+        // 1. Search Query Filter
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchName = studio.name?.toLowerCase().includes(q);
+          const matchOwner = studio.ownerName?.toLowerCase().includes(q);
+          const matchPhone = studio.phone?.toLowerCase().includes(q);
+          const matchEmail = studio.email?.toLowerCase().includes(q);
+          const matchCity = studio.city?.toLowerCase().includes(q);
+          const matchAddress = studio.address?.toLowerCase().includes(q);
+          const matchGst = studio.gstNumber?.toLowerCase().includes(q);
+          const matchUpi = studio.upiId?.toLowerCase().includes(q);
+          if (!matchName && !matchOwner && !matchPhone && !matchEmail && !matchCity && !matchAddress && !matchGst && !matchUpi) {
+            return false;
+          }
+        }
+
+        // Calculations for filter pills
+        const sProjects = projects.filter(p => p.studioId === studio.id);
+        const sBilling = sProjects.reduce((sum, p) => sum + (Number(p.projectAmount) || 0), 0);
+        const sPays = payments.filter(pay => pay.entityId === studio.id && pay.entityType === 'studio');
+        const sPaidFromDocs = sPays.reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0);
+        const sAdvances = sProjects.reduce((sum, p) => {
+          const hasDoc = payments.some(pay => pay.projectId === p.id && pay.entityType === 'studio');
+          return hasDoc ? sum : sum + (Number(p.advancePayment) || 0);
+        }, 0);
+        const sPaid = sPaidFromDocs + sAdvances;
+        const outstanding = Math.max(0, sBilling - sPaid);
+        const activeProjectsCount = sProjects.filter(p => !['delivered', 'closed'].includes(p.status)).length;
+
+        // 2. Active Filter Pills
+        if (activeFilter === 'active_pipeline') {
+          return activeProjectsCount > 0;
+        }
+        if (activeFilter === 'outstanding') {
+          return outstanding > 0;
+        }
+        if (activeFilter === 'settled') {
+          return outstanding === 0;
+        }
+        if (activeFilter === 'high_volume') {
+          return sProjects.length >= 2 || studio.tier === 'elite' || studio.tier === 'premium';
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'name_asc') {
+          return (a.name || '').localeCompare(b.name || '');
+        }
+        if (sortBy === 'projects_desc') {
+          const countA = projects.filter(p => p.studioId === a.id).length;
+          const countB = projects.filter(p => p.studioId === b.id).length;
+          return countB - countA;
+        }
+        if (sortBy === 'billing_desc') {
+          const billA = projects.filter(p => p.studioId === a.id).reduce((sum, p) => sum + (Number(p.projectAmount) || 0), 0);
+          const billB = projects.filter(p => p.studioId === b.id).reduce((sum, p) => sum + (Number(p.projectAmount) || 0), 0);
+          return billB - billA;
+        }
+        if (sortBy === 'outstanding_desc') {
+          const getOutstanding = (s: Studio) => {
+            const sProj = projects.filter(p => p.studioId === s.id);
+            const sBill = sProj.reduce((sum, p) => sum + (Number(p.projectAmount) || 0), 0);
+            const sPays = payments.filter(pay => pay.entityId === s.id && pay.entityType === 'studio');
+            const sPaidDocs = sPays.reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0);
+            const sAdv = sProj.reduce((sum, p) => {
+              const hasDoc = payments.some(pay => pay.projectId === p.id && pay.entityType === 'studio');
+              return hasDoc ? sum : sum + (Number(p.advancePayment) || 0);
+            }, 0);
+            return Math.max(0, sBill - (sPaidDocs + sAdv));
+          };
+          return getOutstanding(b) - getOutstanding(a);
+        }
+        if (sortBy === 'recent') {
+          return (b.id || '').localeCompare(a.id || '');
+        }
+        return 0;
+      });
+  }, [studios, projects, payments, searchQuery, activeFilter, sortBy]);
+
   return (
     <div className="space-y-6">
       
-      {/* Top action header */}
-      <div className="p-6 rounded-3xl glass-panel flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* 1. Header Banner with View Tabs */}
+      <div className="p-6 sm:p-7 rounded-3xl bg-charcoal-950/80 border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4 backdrop-blur-xl relative overflow-hidden shadow-2xl">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gold-500/5 rounded-full blur-3xl pointer-events-none" />
+
         <div>
-          <h2 className="text-xl font-bold font-display text-white">Studio Partners Directory</h2>
-          <p className="text-xs text-gray-400 mt-1">Manage wedding studios and aggregated business pipelines.</p>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-gold-400 font-bold px-2.5 py-0.5 rounded-full bg-gold-500/10 border border-gold-500/20">
+              B2B Client Registry
+            </span>
+            <span className="text-[11px] font-mono text-gray-400">
+              {studios.length} Partner Studios Registered
+            </span>
+          </div>
+          <h2 className="text-2xl font-bold font-display text-white mt-1.5 flex items-center gap-2">
+            <span>Studio Partners Hub</span>
+            <Sparkles className="w-5 h-5 text-gold-400 fill-gold-400/20" />
+          </h2>
+          <p className="text-xs text-gray-400 mt-1 max-w-xl leading-relaxed">
+            Manage wedding cinematography studios, aggregated contract pipelines, quarterly analytics, and WhatsApp statements.
+          </p>
         </div>
-        
-        <button
-          onClick={openCreateModal}
-          className="flex items-center space-x-2 px-4.5 py-2.5 bg-gradient-to-r from-luxury-green-800 to-luxury-green-600 border border-gold-500/30 rounded-2xl text-white font-medium text-xs hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer gold-glow shrink-0"
-        >
-          <Plus className="w-4 h-4 text-gold-300" />
-          <span>Add Studio Partner</span>
-        </button>
-      </div>
 
-      {/* Grid of Studio Profiles */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        {studios.map((studio) => {
-          const studioProjects = projects.filter(p => p.studioId === studio.id);
-          const totalBilling = studioProjects.reduce((sum, p) => sum + (p.projectAmount || 0), 0);
-          
-          const studioPayments = payments.filter(pay => pay.entityId === studio.id && pay.entityType === 'studio');
-          const totalPaidFromPayments = studioPayments.reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0);
-          const projectAdvancesNotLogged = studioProjects.reduce((sum, p) => {
-            const hasDoc = payments.some(pay => pay.projectId === p.id && pay.entityType === 'studio');
-            return hasDoc ? sum : sum + (p.advancePayment || 0);
-          }, 0);
-          const totalPaid = totalPaidFromPayments + projectAdvancesNotLogged;
-          const outstanding = Math.max(0, totalBilling - totalPaid);
-          
-          return (
-            <motion.div
-              key={studio.id}
-              layout
-              onClick={() => { setSelectedStudio(studio); setIsLedgerOpen(true); }}
-              className="p-6 rounded-3xl glass-panel relative overflow-hidden flex flex-col justify-between h-80 cursor-pointer group glass-panel-hover"
+        {/* Action Controls: Tab Switcher & Create Studio */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* View Tab Switcher */}
+          <div className="flex items-center p-1 bg-black/60 border border-white/10 rounded-2xl shadow-inner">
+            <button
+              type="button"
+              id="tab-studio-directory"
+              onClick={() => setActiveViewTab('directory')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeViewTab === 'directory'
+                  ? 'bg-gradient-to-r from-gold-500 to-amber-500 text-charcoal-950 font-bold shadow-md'
+                  : 'text-gray-400 hover:text-white'
+              }`}
             >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-luxury-green-800/10 rounded-full blur-2xl pointer-events-none -z-10" />
+              <Building2 className="w-3.5 h-3.5" />
+              <span>Directory ({studios.length})</span>
+            </button>
 
-              <div>
-                <div className="flex justify-between items-start">
-                  <div className="w-12 h-12 rounded-2xl bg-charcoal-900 border border-luxury-green-800/30 flex items-center justify-center overflow-hidden shrink-0">
-                    {studio.logoUrl ? (
-                      <img src={studio.logoUrl} alt={studio.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <Logo size={36} variant="gold" />
-                    )}
-                  </div>
-                  
-                  {/* Ledger quick controls */}
-                  <div className="flex space-x-1" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={(e) => openEditModal(studio, e)}
-                      className="p-2 hover:bg-luxury-green-800/20 text-gray-400 hover:text-gold-500 rounded-lg transition-colors"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={(e) => handleDelete(studio.id, e)}
-                      className="p-2 hover:bg-red-500/10 text-gray-400 hover:text-red-400 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
+            <button
+              type="button"
+              id="tab-studio-analytics"
+              onClick={() => setActiveViewTab('analytics')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeViewTab === 'analytics'
+                  ? 'bg-gradient-to-r from-gold-500 to-amber-500 text-charcoal-950 font-bold shadow-md'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Studio Analytics</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                activeViewTab === 'analytics' 
+                  ? 'bg-charcoal-950/40 text-charcoal-950' 
+                  : 'bg-gold-500/20 text-gold-300'
+              }`}>
+                Q2 FY26–27
+              </span>
+            </button>
+          </div>
 
-                <h3 className="text-lg font-bold text-white font-display mt-4 group-hover:text-gold-400 transition-colors truncate">
-                  {studio.name}
-                </h3>
-                <p className="text-xs text-gray-400 font-mono flex items-center space-x-1.5 mt-1">
-                  <User className="w-3.5 h-3.5 text-luxury-green-500 shrink-0" />
-                  <span>{studio.ownerName}</span>
-                </p>
-
-                <div className="space-y-1 mt-4 text-[11px] text-gray-400">
-                  <p className="flex items-center space-x-2">
-                    <Phone className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                    <span>{studio.phone}</span>
-                  </p>
-                  <p className="flex items-center space-x-2 truncate">
-                    <MapPin className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                    <span>{studio.address}</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Aggregations */}
-              <div className="border-t border-luxury-green-800/10 pt-4 mt-4 grid grid-cols-2 gap-2 text-[11px] font-mono">
-                <div>
-                  <span className="text-gray-500 block">PROJECTS</span>
-                  <span className="text-white font-bold text-xs">{studioProjects.length} Engagements</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-gray-500 block">DUE BAL</span>
-                  <span className="text-red-400 font-bold text-xs">₹{outstanding.toLocaleString('en-IN')}</span>
-                </div>
-              </div>
-            </motion.div>
-          );
-        })}
+          {(userRole === 'admin' || userRole === 'editor') && (
+            <button
+              type="button"
+              onClick={handleOpenCreateModal}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-luxury-green-800 to-luxury-green-600 hover:from-luxury-green-700 hover:to-luxury-green-500 border border-gold-500/30 rounded-2xl text-white font-medium text-xs shadow-xl shadow-luxury-green-950/60 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shrink-0"
+            >
+              <Plus className="w-4 h-4 text-gold-300" />
+              <span className="font-bold hidden sm:inline">Register Studio</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Studio LEDGER Slidout Panel */}
-      <AnimatePresence>
-        {isLedgerOpen && selectedStudio && (
-          <div className="fixed inset-0 z-50 overflow-hidden">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsLedgerOpen(false)} />
-
-            <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-              <motion.div
-                id="studio-ledger-panel"
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 180 }}
-                className="w-screen max-w-2xl bg-charcoal-900 border-l border-luxury-green-800/30 shadow-2xl flex flex-col justify-between"
-              >
-                {/* Header */}
-                <div className="p-6 border-b border-luxury-green-800/20 bg-charcoal-950/50 shrink-0 flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-[10px] font-mono px-2.5 py-0.5 bg-luxury-green-950 text-gold-400 border border-gold-500/10 rounded-full">
-                        Ledger Account
-                      </span>
-                      {selectedStudio.gstNumber && (
-                        <span className="text-[10px] font-mono text-gray-400">GST: {selectedStudio.gstNumber}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-3 mt-1.5">
-                      <div className="w-10 h-10 rounded-xl bg-charcoal-900 border border-luxury-green-800/30 flex items-center justify-center overflow-hidden shrink-0">
-                        {selectedStudio.logoUrl ? (
-                          <img src={selectedStudio.logoUrl} alt={selectedStudio.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          <Logo size={30} variant="gold" className="shrink-0" />
-                        )}
-                      </div>
-                      <h2 className="text-2xl font-bold font-display text-white">{selectedStudio.name}</h2>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">{selectedStudio.ownerName} • Partner Studio</p>
-                  </div>
-
-                  <button
-                    onClick={() => setIsLedgerOpen(false)}
-                    className="p-2 hover:bg-charcoal-800 rounded-xl text-gray-400"
-                  >
-                    ✕ Close
-                  </button>
+      {/* 2. Main Body Content: Studio Analytics Panel OR Directory Pipeline */}
+      {activeViewTab === 'analytics' ? (
+        <StudioAnalyticsPanel
+          studios={studios}
+          projects={projects}
+          payments={payments}
+          onSelectStudio={(s) => setSelectedStudio(s)}
+          onBackToDirectory={() => setActiveViewTab('directory')}
+        />
+      ) : (
+        <>
+          {/* Quick Analytics Teaser Banner in Directory */}
+          <div 
+            onClick={() => setActiveViewTab('analytics')}
+            className="p-4 rounded-2xl bg-gradient-to-r from-charcoal-950 via-[#0a1813] to-charcoal-950 border border-gold-500/30 hover:border-gold-400/80 flex items-center justify-between gap-4 cursor-pointer transition-all shadow-lg group"
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="p-2.5 rounded-xl bg-gold-500/10 text-gold-400 border border-gold-500/25 group-hover:scale-110 transition-transform shrink-0">
+                <BarChart3 className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-white group-hover:text-gold-300 transition-colors">
+                    Fiscal Quarter Studio Analytics
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/30">
+                    Q2 FY 2026–27 (Jul – Sep)
+                  </span>
                 </div>
-
-                {/* Ledger Core Calculations */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                  
-                  {/* Revenue / Pending Summary banner */}
-                  {(() => {
-                    const studioProjects = projects.filter(p => p.studioId === selectedStudio.id);
-                    const totalBilling = studioProjects.reduce((sum, p) => sum + (p.projectAmount || 0), 0);
-                    
-                    const studioPayments = payments.filter(pay => pay.entityId === selectedStudio.id && pay.entityType === 'studio');
-                    const totalPaidFromPayments = studioPayments.reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0);
-                    const projectAdvancesNotLogged = studioProjects.reduce((sum, p) => {
-                      const hasDoc = payments.some(pay => pay.projectId === p.id && pay.entityType === 'studio');
-                      return hasDoc ? sum : sum + (p.advancePayment || 0);
-                    }, 0);
-                    const totalPaid = totalPaidFromPayments + projectAdvancesNotLogged;
-                    const outstanding = Math.max(0, totalBilling - totalPaid);
-
-                    return (
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="p-4 bg-charcoal-800/40 border border-luxury-green-800/10 rounded-2xl text-center">
-                          <span className="text-[9px] font-mono text-gray-500 block uppercase">Total Val of Work</span>
-                          <span className="text-base font-bold text-white mt-1 block">₹{totalBilling.toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="p-4 bg-emerald-950/20 border border-emerald-500/10 rounded-2xl text-center">
-                          <span className="text-[9px] font-mono text-emerald-500 block uppercase">Received Advance</span>
-                          <span className="text-base font-bold text-emerald-400 mt-1 block">₹{totalPaid.toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="p-4 bg-red-950/20 border border-red-500/10 rounded-2xl text-center">
-                          <span className="text-[9px] font-mono text-red-500 block uppercase">Pending Clearance</span>
-                          <span className="text-base font-bold text-red-400 mt-1 block">₹{outstanding.toLocaleString('en-IN')}</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Wedding History timeline */}
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-gold-500 font-mono">Wedding Pipeline History</h3>
-                    
-                    <div className="space-y-3">
-                      {projects.filter(p => p.studioId === selectedStudio.id).length > 0 ? (
-                        projects.filter(p => p.studioId === selectedStudio.id).map((proj) => (
-                          <div 
-                            key={proj.id} 
-                            className="p-4 rounded-2xl bg-charcoal-950/60 border border-luxury-green-800/10 flex justify-between items-center"
-                          >
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <span className="text-[9px] font-mono text-gold-400">{proj.id}</span>
-                                <span className="text-[9px] font-mono text-gray-500">{proj.deliveryDate}</span>
-                              </div>
-                              <h4 className="text-xs font-bold text-white mt-1">{proj.coupleName}</h4>
-                              <p className="text-[10px] text-gray-400 mt-0.5">{proj.eventType}</p>
-                            </div>
-
-                            <div className="text-right">
-                              <div className="text-xs font-bold text-white">₹{proj.projectAmount.toLocaleString('en-IN')}</div>
-                              <span className={`inline-block text-[8px] font-mono px-2 py-0.5 rounded uppercase mt-1 ${
-                                proj.status === 'delivered' || proj.status === 'closed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-500'
-                              }`}>
-                                {proj.status}
-                              </span>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-center py-6 text-[10px] text-gray-500 font-mono">No wedding projects filed for this partner.</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer Controls */}
-                <div className="p-6 border-t border-luxury-green-800/20 bg-charcoal-950/40 flex justify-between shrink-0">
-                  <button
-                    onClick={(e) => openEditModal(selectedStudio, e)}
-                    className="flex items-center space-x-2 px-4 py-2.5 bg-luxury-green-800 text-gold-400 text-xs font-bold rounded-xl border border-gold-500/20"
-                  >
-                    <Edit className="w-4 h-4" />
-                    <span>Edit Profile Details</span>
-                  </button>
-
-                  <button
-                    onClick={(e) => handleDelete(selectedStudio.id, e)}
-                    className="flex items-center space-x-2 px-4 py-2.5 hover:bg-red-500/10 text-red-400 text-xs font-bold rounded-xl"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>Delete Studio Partner</span>
-                  </button>
-                </div>
-              </motion.div>
+                <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                  View visual charts for projects contributed per studio and total quarterly revenue generated.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-gold-400 group-hover:translate-x-1 transition-transform shrink-0">
+              <span>View Charts</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
-        )}
-      </AnimatePresence>
 
-      {/* CREATE & EDIT modal */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center">
-              <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+          {/* Executive KPI Header Bar */}
+          <StudiosHeaderKpi
+            studios={studios}
+            projects={projects}
+            payments={payments}
+            activeFilter={activeFilter}
+            setActiveFilter={setActiveFilter}
+          />
 
-              <motion.div
-                id="studio-form-modal"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform rounded-3xl glass-panel relative z-10"
-              >
-                <h3 className="text-lg font-bold text-white font-display mb-5">
-                  {editingStudio ? `Edit Profile: ${editingStudio.name}` : 'Register New Studio Partner'}
-                </h3>
+          {/* Filter & Sort Toolbar */}
+          <StudiosFilterBar
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            activeFilter={activeFilter}
+            setActiveFilter={setActiveFilter}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            totalCount={studios.length}
+            filteredCount={filteredAndSortedStudios.length}
+            onOpenCreateModal={handleOpenCreateModal}
+            userRole={userRole}
+          />
 
-                <form onSubmit={handleSaveStudio} className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase mb-1">Studio / Agency Name</label>
-                    <input
-                      type="text"
-                      required
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-charcoal-900 border border-luxury-green-800/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                    />
-                  </div>
+          {/* Studio Cards Grid or Executive Table List */}
+          {viewMode === 'grid' ? (
+            <StudioCardGrid
+              studios={filteredAndSortedStudios}
+              projects={projects}
+              payments={payments}
+              userRole={userRole}
+              onSelectStudio={(s) => setSelectedStudio(s)}
+              onEditStudio={handleOpenEditModal}
+              onDeleteStudio={handleDeleteRequest}
+              onOpenWhatsApp={handleOpenWhatsApp}
+              onQuickCopy={handleQuickCopy}
+            />
+          ) : (
+            <StudioListView
+              studios={filteredAndSortedStudios}
+              projects={projects}
+              payments={payments}
+              userRole={userRole}
+              onSelectStudio={(s) => setSelectedStudio(s)}
+              onEditStudio={handleOpenEditModal}
+              onDeleteStudio={handleDeleteRequest}
+              onOpenWhatsApp={handleOpenWhatsApp}
+              onQuickCopy={handleQuickCopy}
+            />
+          )}
+        </>
+      )}
 
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase mb-1">Owner Name</label>
-                    <input
-                      type="text"
-                      required
-                      value={ownerName}
-                      onChange={(e) => setOwnerName(e.target.value)}
-                      className="w-full bg-charcoal-900 border border-luxury-green-800/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                    />
-                  </div>
+      {/* 5. Studio Slide-Over Ledger Drawer */}
+      <StudioDetailDrawer
+        studio={selectedStudio}
+        projects={projects}
+        payments={payments}
+        userRole={userRole}
+        onClose={() => setSelectedStudio(null)}
+        onEditStudio={handleOpenEditModal}
+        onDeleteStudio={handleDeleteRequest}
+        onOpenWhatsApp={handleOpenWhatsApp}
+        onOpenPaymentModal={(s) => setPaymentStudio(s)}
+        onQuickCopy={handleQuickCopy}
+      />
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-mono text-gray-400 uppercase mb-1">Phone Number</label>
-                      <input
-                        type="text"
-                        required
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="w-full bg-charcoal-900 border border-luxury-green-800/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-mono text-gray-400 uppercase mb-1">GST Registration</label>
-                      <input
-                        type="text"
-                        placeholder="GST (Optional)"
-                        value={gstNumber}
-                        onChange={(e) => setGstNumber(e.target.value)}
-                        className="w-full bg-charcoal-900 border border-luxury-green-800/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                      />
-                    </div>
-                  </div>
+      {/* 6. Studio Create & Edit Form Modal */}
+      <StudioFormModal
+        isOpen={isFormModalOpen}
+        editingStudio={editingStudio}
+        onClose={() => setIsFormModalOpen(false)}
+        onSave={handleSaveStudio}
+        onToast={triggerToast}
+      />
 
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-charcoal-900 border border-luxury-green-800/30 rounded-xl px-3 py-2 text-xs text-white"
-                    />
-                  </div>
+      {/* 7. Studio WhatsApp Dispatch Modal */}
+      {whatsAppStudio && (
+        <StudioWhatsAppModal
+          studio={whatsAppStudio}
+          projects={projects}
+          payments={payments}
+          onClose={() => setWhatsAppStudio(null)}
+          onToast={triggerToast}
+        />
+      )}
 
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase mb-1">Office Address</label>
-                    <input
-                      type="text"
-                      required
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      className="w-full bg-charcoal-900 border border-luxury-green-800/30 rounded-xl px-3 py-2 text-xs text-white"
-                    />
-                  </div>
+      {/* 8. Direct Studio Payment Record Modal */}
+      {paymentStudio && (
+        <StudioPaymentModal
+          studio={paymentStudio}
+          projects={projects}
+          onClose={() => setPaymentStudio(null)}
+          onLogPayment={onLogPayment}
+          onToast={triggerToast}
+        />
+      )}
 
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase mb-2">Studio Logo / Brand Identity</label>
-                    <div className="flex items-center space-x-4 p-3.5 bg-charcoal-950/40 border border-luxury-green-800/20 rounded-2xl">
-                      <div className="w-16 h-16 rounded-2xl bg-charcoal-900 border border-luxury-green-800/30 flex items-center justify-center overflow-hidden shrink-0">
-                        {logoUrl ? (
-                          <img src={logoUrl} alt="Logo Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          <Logo size={40} variant="gold" />
-                        )}
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <label className="cursor-pointer bg-luxury-green-800/30 hover:bg-luxury-green-800/60 text-gold-400 border border-gold-500/20 rounded-xl px-3.5 py-1.5 text-[10px] font-mono tracking-wider transition-all hover:scale-[1.02] active:scale-[0.98]">
-                            UPLOAD LOGO
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  const reader = new FileReader();
-                                  reader.onload = async () => {
-                                    if (typeof reader.result === 'string') {
-                                      const compressed = await compressImage(reader.result, 400, 400, 0.7);
-                                      setLogoUrl(compressed);
-                                    }
-                                  };
-                                  reader.readAsDataURL(file);
-                                }
-                              }}
-                            />
-                          </label>
-                          {logoUrl && (
-                            <button
-                              type="button"
-                              onClick={() => setLogoUrl('')}
-                              className="bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl px-3.5 py-1.5 text-[10px] font-mono tracking-wider transition-all cursor-pointer"
-                            >
-                              CLEAR
-                            </button>
-                          )}
-                        </div>
-                        <input
-                          type="text"
-                          placeholder="Or paste external image URL"
-                          value={logoUrl.startsWith('data:') ? '' : logoUrl}
-                          onChange={(e) => setLogoUrl(e.target.value)}
-                          className="w-full bg-charcoal-900 border border-luxury-green-800/20 rounded-xl px-3 py-1.5 text-[10px] text-white focus:outline-none placeholder-gray-600 font-mono"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-mono text-gold-400 uppercase mb-1">UPI ID for Payments</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. sateeshtiwari@okaxis"
-                        value={upiId}
-                        onChange={(e) => setUpiId(e.target.value)}
-                        className="w-full bg-charcoal-900 border border-luxury-green-800/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none placeholder-gray-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-mono text-gold-400 uppercase mb-1">Direct Payment Link</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. https://razorpay.me/@studio"
-                        value={paymentLink}
-                        onChange={(e) => setPaymentLink(e.target.value)}
-                        className="w-full bg-charcoal-900 border border-luxury-green-800/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none placeholder-gray-600"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-mono text-gray-400 uppercase mb-1">Internal Notes</label>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      className="w-full bg-charcoal-900 border border-luxury-green-800/30 rounded-xl px-3 py-2 text-xs text-white h-20 resize-none"
-                    />
-                  </div>
-
-                  <div className="flex justify-end space-x-3 pt-4 border-t border-luxury-green-800/10">
-                    <button
-                      type="button"
-                      onClick={() => setIsModalOpen(false)}
-                      className="px-4 py-2 text-xs text-gray-400"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 bg-gold-500 text-charcoal-950 font-bold text-xs rounded-xl"
-                    >
-                      {editingStudio ? 'Save Profile' : 'Register Studio'}
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Delete Studio Partner Confirmation Modal */}
+      {/* 9. Delete Studio Partner Confirmation Modal */}
       <AnimatePresence>
         {studioToDeleteId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -614,21 +423,21 @@ const StudiosView = React.memo(function StudiosView({
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="relative w-full max-w-md p-6 overflow-hidden text-left bg-charcoal-900 border border-red-500/30 rounded-3xl shadow-[0_20px_50px_rgba(239,68,68,0.2)] z-10"
+              className="relative w-full max-w-md p-6 overflow-hidden text-left bg-charcoal-900 border border-red-500/30 rounded-3xl shadow-[0_20px_50px_rgba(239,68,68,0.2)] z-10 space-y-4"
             >
               <div className="flex items-start space-x-3.5">
-                <div className="p-3 bg-red-500/10 text-red-400 rounded-2xl border border-red-500/20">
+                <div className="p-3 bg-red-500/10 text-red-400 rounded-2xl border border-red-500/20 shrink-0">
                   <Info className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white font-display">Delete Studio Partner</h3>
-                  <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
-                    Are you sure you want to delete this studio partner? All associated wedding records will be unlinked. This operation cannot be undone.
+                  <h3 className="text-base font-bold text-white font-display">Delete Studio Partner</h3>
+                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                    Are you sure you want to delete this studio partner? It will be safely moved to the Recycle Bin and can be restored anytime.
                   </p>
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-white/5">
+              <div className="flex justify-end space-x-3 pt-3 border-t border-white/5">
                 <button
                   type="button"
                   onClick={() => setStudioToDeleteId(null)}
@@ -643,8 +452,7 @@ const StudiosView = React.memo(function StudiosView({
                       await onDeleteStudio(studioToDeleteId);
                       setStudioToDeleteId(null);
                       setSelectedStudio(null);
-                      setIsLedgerOpen(false);
-                      triggerToast("Studio Deleted", "Studio partner and dependencies unlinked successfully.");
+                      triggerToast("Studio Partner Archived", "Studio partner safely moved to Recycle Bin.");
                     }
                   }}
                   className="px-5 py-2.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-bold text-xs rounded-xl shadow-[0_4px_15px_rgba(239,68,68,0.25)] transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.99]"
@@ -657,21 +465,21 @@ const StudiosView = React.memo(function StudiosView({
         )}
       </AnimatePresence>
 
-      {/* Success Notification Alert Toast */}
+      {/* 10. Success Notification Toast */}
       <AnimatePresence>
         {toast && (
           <motion.div
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-6 right-6 z-50 flex items-center space-x-3 bg-luxury-green-950/90 border border-gold-500/30 p-4 rounded-2xl shadow-2xl backdrop-blur-md max-w-sm gold-glow animate-none"
+            className="fixed bottom-6 right-6 z-50 flex items-center space-x-3 bg-charcoal-900/95 border border-gold-500/40 p-4 rounded-2xl shadow-2xl backdrop-blur-md max-w-sm"
           >
-            <div className="p-2 bg-gold-500/25 rounded-xl text-gold-400">
+            <div className="p-2 bg-gold-500/20 rounded-xl text-gold-400 shrink-0">
               <Check className="w-4 h-4" />
             </div>
             <div>
               <p className="text-xs font-bold text-white">{toast.title}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{toast.desc}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5 font-mono">{toast.desc}</p>
             </div>
           </motion.div>
         )}

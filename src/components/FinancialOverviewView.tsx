@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -15,19 +15,38 @@ import {
   Wallet, 
   Clock, 
   CheckCircle2, 
-  AlertCircle,
-  Eye,
-  ExternalLink,
-  X,
-  Building2,
-  Users,
-  PieChart as PieChartIcon,
-  BarChart3,
-  Edit,
-  Trash2
+  AlertCircle, 
+  Eye, 
+  ExternalLink, 
+  X, 
+  Building2, 
+  Users, 
+  PieChart as PieChartIcon, 
+  BarChart3, 
+  Edit, 
+  Trash2,
+  Sparkles,
+  Zap,
+  Check,
+  Plane,
+  Camera,
+  Laptop,
+  Coffee,
+  HelpCircle,
+  Tag
 } from 'lucide-react';
 import { Project, Expense, Editor, Studio, PaymentHistory } from '../types';
 import ProjectProfitMarginD3Chart from './ProjectProfitMarginD3Chart';
+import PredictiveEarningsBarChart from './PredictiveEarningsBarChart';
+import ReceiptScannerModal from './ReceiptScannerModal';
+import { 
+  predictExpenseCategory, 
+  predictCategoryWithAI,
+  COMMON_EXPENSE_CATEGORIES,
+  suggestCategoriesFromTitle,
+  calculateMonthlySpendByCategory,
+  normalizeExpenseCategory
+} from '../utils/categoryPredictor';
 
 interface FinancialOverviewViewProps {
   projects?: Project[];
@@ -75,16 +94,71 @@ export default function FinancialOverviewView({
 
   // Modals state
   const [showLogExpenseModal, setShowLogExpenseModal] = useState(false);
+  const [showReceiptScannerModal, setShowReceiptScannerModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState<{ type: string; title: string; data?: any } | null>(null);
   const [selectedTxReceipt, setSelectedTxReceipt] = useState<any | null>(null);
 
   // New Expense form state
   const [expTitle, setExpTitle] = useState('');
-  const [expCategory, setExpCategory] = useState('Editor Payouts');
+  const [expCategory, setExpCategory] = useState('Travel');
   const [expAmount, setExpAmount] = useState<number | ''>('');
   const [expPayee, setExpPayee] = useState('');
   const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
   const [expMode, setExpMode] = useState('UPI');
+  const [expProjectId, setExpProjectId] = useState<string>('');
+  const [isPredictingAI, setIsPredictingAI] = useState(false);
+
+  // Monthly Spend Counters per Category
+  const expMonthlySummary = useMemo(() => {
+    return calculateMonthlySpendByCategory(expenses, expDate);
+  }, [expenses, expDate]);
+
+  // Dynamic Suggestion based on Title and Payee
+  const expSuggestions = useMemo(() => {
+    return suggestCategoriesFromTitle(expTitle || expPayee, expPayee);
+  }, [expTitle, expPayee]);
+
+  const expPrimarySuggestion = expSuggestions.primary;
+
+  // Normalized active category
+  const expNormalizedCategory = useMemo(() => {
+    return normalizeExpenseCategory(expCategory);
+  }, [expCategory]);
+
+  const expCurrentCategoryData = expMonthlySummary.byCategory[expNormalizedCategory] || {
+    total: 0,
+    count: 0,
+    percentage: 0
+  };
+
+  // Smart Category Prediction from Payee, Title, and Selected Project
+  const smartCategorySuggestion = useMemo(() => {
+    const selectedProj = projects.find(p => p.id === expProjectId);
+    const projContext = selectedProj ? `${selectedProj.projectName || ''} ${selectedProj.coupleName || ''} ${selectedProj.eventType || ''}` : '';
+    return predictExpenseCategory(`${expTitle} ${expPayee}`, expPayee, projContext);
+  }, [expTitle, expPayee, expProjectId, projects]);
+
+  // Handle auto-populating expense form from Gemini Receipt Scanner
+  const handleApplyExtractedReceipt = (extracted: {
+    title: string;
+    payee: string;
+    amount: number;
+    category: string;
+    date: string;
+    paymentMode: string;
+    projectId?: string;
+  }) => {
+    setExpTitle(extracted.title || '');
+    setExpPayee(extracted.payee || extracted.title || '');
+    setExpAmount(extracted.amount || '');
+    setExpCategory(extracted.category || 'Miscellaneous');
+    setExpDate(extracted.date || new Date().toISOString().split('T')[0]);
+    setExpMode(extracted.paymentMode || 'UPI');
+    if (extracted.projectId) {
+      setExpProjectId(extracted.projectId);
+    }
+    setShowLogExpenseModal(true);
+  };
 
   // Initial Transaction state (Empty by default, populated by real payments/expenses)
   const [localTxList, setLocalTxList] = useState<Array<{
@@ -102,8 +176,8 @@ export default function FinancialOverviewView({
   const metrics = useMemo(() => {
     const grossRevenue = projects.reduce((sum, p) => sum + (Number(p.projectAmount) || 0), 0);
     const advanceReceived = projects.reduce((sum, p) => sum + (Number(p.advancePayment) || 0), 0);
-    const remainingReceivables = projects.reduce((sum, p) => sum + (Number(p.remainingBalance) || 0), 0);
-    const pendingInvoicesCount = projects.filter(p => (Number(p.remainingBalance) || 0) > 0).length;
+    const remainingReceivables = Math.max(0, grossRevenue - advanceReceived);
+    const pendingInvoicesCount = projects.filter(p => Math.max(0, (Number(p.projectAmount) || 0) - (Number(p.advancePayment) || 0)) > 0).length;
 
     // Expenses = manual expenses logged + editor payouts from payments/projects
     const totalManualExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
@@ -437,10 +511,21 @@ export default function FinancialOverviewView({
             )}
           </div>
 
+          {/* ✨ Scan Receipt with AI Button */}
+          <button
+            id="scan-receipt-header-btn"
+            onClick={() => setShowReceiptScannerModal(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-amber-500/20 to-amber-600/10 hover:from-amber-500/30 hover:to-amber-600/20 text-amber-300 border border-amber-500/40 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all shadow-md active:scale-95 cursor-pointer"
+            title="Scan text receipt or image using Gemini AI"
+          >
+            <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+            <span>Scan Receipt</span>
+          </button>
+
           {/* + Log Expense Button */}
           <button
             onClick={() => setShowLogExpenseModal(true)}
-            className="flex items-center gap-2 bg-[#eab308]/10 hover:bg-[#eab308]/20 text-[#eab308] border border-[#eab308]/30 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all shadow-md active:scale-95"
+            className="flex items-center gap-2 bg-[#eab308]/10 hover:bg-[#eab308]/20 text-[#eab308] border border-[#eab308]/30 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all shadow-md active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Log Expense</span>
@@ -582,6 +667,9 @@ export default function FinancialOverviewView({
 
       {/* ================= D3.JS PROJECT-WISE PROFIT MARGIN CHART ================= */}
       <ProjectProfitMarginD3Chart projects={projects} expenses={expenses} />
+
+      {/* ================= PREDICTIVE EARNINGS BAR CHART ================= */}
+      <PredictiveEarningsBarChart projects={projects} />
 
       {/* ================= MIDDLE ROW: CASHFLOW & EXPENSE BREAKDOWN ================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -946,7 +1034,19 @@ export default function FinancialOverviewView({
             RECENT TRANSACTIONS
           </h3>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* ✨ AI Receipt Scanner Button */}
+            <button
+              id="scan-receipt-table-btn"
+              type="button"
+              onClick={() => setShowReceiptScannerModal(true)}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-amber-600/10 hover:from-amber-500/30 hover:to-amber-600/20 text-amber-300 border border-amber-500/40 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer"
+              title="Scan receipt text or image with Gemini AI"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <span>Scan Receipt</span>
+            </button>
+
             {/* Filter Pills */}
             <div className="flex items-center bg-[#0d1611] p-1 rounded-xl border border-[#1b2b20] text-xs font-semibold">
               {(['All', 'Receipts', 'Payouts'] as const).map((tab) => (
@@ -1048,49 +1148,189 @@ export default function FinancialOverviewView({
       {/* ================= LOG EXPENSE MODAL ================= */}
       {showLogExpenseModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0b140f] border border-[#1d3326] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-scaleUp text-slate-100">
+          <div className="bg-[#0b140f] border border-[#1d3326] rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl animate-scaleUp text-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between border-b border-[#182b20] pb-3">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-amber-500" /> Log New Expense
-              </h3>
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2 font-display">
+                  <Plus className="w-5 h-5 text-amber-500" /> Log Studio Expense
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">Record studio purchases, contractor payouts, and equipment costs</p>
+              </div>
               <button
                 onClick={() => setShowLogExpenseModal(false)}
-                className="text-slate-400 hover:text-white"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/40"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* AI Receipt Scanner Quick Launch Button */}
+            <div className="bg-gradient-to-r from-amber-500/15 via-[#13251c] to-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center justify-between gap-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white">Have a receipt, bill, or SMS?</p>
+                  <p className="text-[11px] text-slate-400">Gemini can extract all fields automatically</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogExpenseModal(false);
+                  setShowReceiptScannerModal(true);
+                }}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl shadow transition-all cursor-pointer shrink-0"
+              >
+                Scan Receipt
+              </button>
+            </div>
+
             <form onSubmit={handleCreateExpense} className="space-y-4 text-xs sm:text-sm">
+              {/* Optional Project Association */}
+              {projects.length > 0 && (
+                <div>
+                  <label className="text-slate-400 text-xs block mb-1">Associate with Wedding / Project (Optional)</label>
+                  <select
+                    value={expProjectId}
+                    onChange={(e) => {
+                      setExpProjectId(e.target.value);
+                    }}
+                    className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer text-xs"
+                  >
+                    <option value="">-- General Studio Overhead (No project) --</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.id} • {p.projectName || p.coupleName} ({p.studioName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
-                <label className="text-slate-400 block mb-1">Expense Title / Payee</label>
+                <label className="text-slate-400 text-xs block mb-1">Expense Title / Item Description *</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Editor Payout to Vansh / Office Rent"
+                  placeholder="e.g. Indigo flight to Goa, SanDisk 2TB SSD, Freelance editor pay..."
+                  value={expTitle}
+                  onChange={(e) => {
+                    setExpTitle(e.target.value);
+                    if (!expPayee) setExpPayee(e.target.value);
+                  }}
+                  className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none text-xs"
+                />
+
+                {/* Suggested Category Badge from Title */}
+                {expPrimarySuggestion && (
+                  <div className="mt-2 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="text-xs text-amber-200 truncate">
+                        Suggested Category: <strong className="text-white font-semibold">{expPrimarySuggestion.category}</strong>
+                        <span className="text-[10px] text-gray-400 ml-1 font-mono hidden sm:inline">
+                          (Matched &quot;{expPrimarySuggestion.matchedKeyword}&quot;)
+                        </span>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setExpCategory(expPrimarySuggestion.category)}
+                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-bold rounded-lg transition-colors cursor-pointer shrink-0 shadow"
+                    >
+                      {expCategory === expPrimarySuggestion.category ? 'Applied' : `Apply ${expPrimarySuggestion.category}`}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Interactive Common Categories Selector with Monthly Spend Counters */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-slate-400 text-xs block flex items-center gap-1">
+                    <Tag className="w-3 h-3 text-amber-400" /> Category &amp; Monthly Spend
+                  </label>
+                  <span className="text-[10px] font-mono text-amber-400">
+                    Month: {expMonthlySummary.monthLabel}
+                  </span>
+                </div>
+
+                {/* Quick Selection Buttons with Total Monthly Spend Counter per Category */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-2">
+                  {COMMON_EXPENSE_CATEGORIES.map(cat => {
+                    const catData = expMonthlySummary.byCategory[cat.id] || { total: 0, count: 0 };
+                    const isSelected = expNormalizedCategory === cat.id;
+                    const isSuggested = expPrimarySuggestion?.category === cat.id;
+
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setExpCategory(cat.id)}
+                        className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-amber-500/20 border-amber-500 text-white ring-1 ring-amber-500/40'
+                            : isSuggested
+                            ? 'bg-[#111f17] border-amber-500/40 text-gray-300 hover:border-amber-400'
+                            : 'bg-[#111f17]/70 border-[#1f3629] text-gray-400 hover:text-gray-200 hover:border-[#2f523f]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] font-semibold truncate">{cat.shortLabel}</span>
+                          {isSelected && <Check className="w-3 h-3 text-amber-400" />}
+                        </div>
+                        <div className="text-[10px] font-mono text-gray-300">
+                          ₹{catData.total.toLocaleString('en-IN')}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Category Dropdown */}
+                <select
+                  value={expCategory}
+                  onChange={(e) => setExpCategory(e.target.value)}
+                  className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer text-xs"
+                >
+                  <option value="Travel">Travel (Flights, Cabs, Outstation &amp; Fuel)</option>
+                  <option value="Equipment">Equipment (Cameras, Lenses, SSDs, Hard Disks &amp; Gear)</option>
+                  <option value="Freelance Pay">Freelance Pay (Freelancer Editors, Colorists &amp; Crew)</option>
+                  <option value="Software & Licenses">Software &amp; Licenses (Adobe CC, Cloud Storage &amp; Tools)</option>
+                  <option value="Studio Rent & Utilities">Studio Rent &amp; Utilities (Rent, Electricity &amp; Broadband)</option>
+                  <option value="Food & Refreshments">Food &amp; Refreshments (Shoot Meals, Tea &amp; Snacks)</option>
+                  <option value="Miscellaneous">Miscellaneous (Other Studio Expenses)</option>
+                </select>
+
+                {/* Monthly Spend Counter for Selected Category */}
+                <div className="mt-2 p-2 bg-[#111f17] border border-[#1f3629] rounded-xl flex items-center justify-between text-xs">
+                  <span className="text-gray-400 text-[11px]">
+                    {expMonthlySummary.monthLabel} Total in <strong className="text-white">{expNormalizedCategory}</strong>:
+                  </span>
+                  <span className="font-mono font-bold text-amber-400">
+                    ₹{expCurrentCategoryData.total.toLocaleString('en-IN')}
+                    <span className="text-gray-400 font-normal text-[10px] ml-1">
+                      ({expCurrentCategoryData.count} items)
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-400 text-xs block mb-1">Payee / Vendor</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Amazon, Vansh Editor, Indigo Airlines"
                   value={expPayee}
                   onChange={(e) => setExpPayee(e.target.value)}
-                  className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none"
+                  className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none text-xs"
                 />
               </div>
 
               <div>
-                <label className="text-slate-400 block mb-1">Category</label>
-                <select
-                  value={expCategory}
-                  onChange={(e) => setExpCategory(e.target.value)}
-                  className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer"
-                >
-                  <option value="Editor Payouts">Editor Payouts</option>
-                  <option value="Office & Rent">Office & Rent</option>
-                  <option value="Travel & Conveyance">Travel & Conveyance</option>
-                  <option value="Software / Tools">Software / Tools</option>
-                  <option value="Miscellaneous">Miscellaneous</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-slate-400 block mb-1">Amount (₹)</label>
+                <label className="text-slate-400 text-xs block mb-1">Amount (₹)</label>
                 <input
                   type="number"
                   required
@@ -1104,25 +1344,26 @@ export default function FinancialOverviewView({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-400 block mb-1">Payment Mode</label>
+                  <label className="text-slate-400 text-xs block mb-1">Payment Mode</label>
                   <select
                     value={expMode}
                     onChange={(e) => setExpMode(e.target.value)}
-                    className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer"
+                    className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer text-xs"
                   >
-                    <option value="UPI">UPI</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="UPI">UPI (GPay / PhonePe)</option>
+                    <option value="Bank Transfer">Bank Transfer (NEFT / IMPS)</option>
+                    <option value="Credit Card">Credit Card</option>
                     <option value="Cash">Cash</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-slate-400 block mb-1">Date</label>
+                  <label className="text-slate-400 text-xs block mb-1">Date</label>
                   <input
                     type="date"
                     value={expDate}
                     onChange={(e) => setExpDate(e.target.value)}
-                    className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none"
+                    className="w-full bg-[#111f17] border border-[#1f3629] rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-amber-500 outline-none text-xs"
                   />
                 </div>
               </div>
@@ -1131,13 +1372,13 @@ export default function FinancialOverviewView({
                 <button
                   type="button"
                   onClick={() => setShowLogExpenseModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-white"
+                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-white cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-lg"
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-lg cursor-pointer transition-all"
                 >
                   Save Expense
                 </button>
@@ -1435,7 +1676,7 @@ export default function FinancialOverviewView({
 
                   setDeletingTxId(null);
                 }}
-                className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-xs shadow-lg"
+                className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-xs shadow-lg cursor-pointer"
               >
                 Confirm Delete
               </button>
@@ -1443,6 +1684,14 @@ export default function FinancialOverviewView({
           </div>
         </div>
       )}
+
+      {/* ================= GEMINI AI RECEIPT SCANNER MODAL ================= */}
+      <ReceiptScannerModal
+        isOpen={showReceiptScannerModal}
+        onClose={() => setShowReceiptScannerModal(false)}
+        onApplyExtractedExpense={handleApplyExtractedReceipt}
+        projects={projects}
+      />
 
     </div>
   );

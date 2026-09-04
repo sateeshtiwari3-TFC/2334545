@@ -19,6 +19,9 @@ interface NotificationsViewProps {
   runnerIsRunning?: boolean;
   runnerLastCheckTime?: Date | null;
   runnerCheckCount?: number;
+  pushPermissionState?: NotificationPermission | 'unsupported';
+  onRequestPushPermission?: () => Promise<boolean>;
+  onSendTestPush?: () => Promise<boolean>;
   onRunnerManualCheck?: () => Promise<void>;
   onMarkRead: (id: string) => Promise<void>;
   onClearNotification: (id: string) => Promise<void>;
@@ -32,6 +35,9 @@ export default function NotificationsView({
   runnerIsRunning = false,
   runnerLastCheckTime = null,
   runnerCheckCount = 0,
+  pushPermissionState = 'default',
+  onRequestPushPermission,
+  onSendTestPush,
   onRunnerManualCheck,
   onMarkRead, 
   onClearNotification,
@@ -68,6 +74,9 @@ export default function NotificationsView({
           isRunning={runnerIsRunning}
           lastCheckTime={runnerLastCheckTime}
           checkCount={runnerCheckCount}
+          pushPermissionState={pushPermissionState}
+          onRequestPushPermission={onRequestPushPermission}
+          onSendTestPush={onSendTestPush}
           onManualCheck={onRunnerManualCheck}
         />
       )}

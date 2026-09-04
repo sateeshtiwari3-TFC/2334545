@@ -18,11 +18,16 @@ export interface Studio {
   phone: string;
   email: string;
   address: string;
+  city?: string;
+  state?: string;
   gstNumber?: string;
   notes?: string;
   logoUrl?: string;
   upiId?: string;
   paymentLink?: string;
+  tier?: 'standard' | 'premium' | 'elite';
+  instagram?: string;
+  website?: string;
   createdAt: any;
 }
 
@@ -36,6 +41,9 @@ export interface Project {
   coupleName: string;
   brideName: string;
   groomName: string;
+  clientPhone?: string;
+  clientEmail?: string;
+  venue?: string;
   couplePhoto?: string;
   studioId: string;
   studioName: string;
@@ -51,17 +59,27 @@ export interface Project {
   secondEditorShare?: number;
   status: ProjectStatus;
   priority: ProjectPriority;
+  tags?: string[]; // Color-coded labels/tags e.g. ['Urgent', 'Revision', 'Awaiting Data']
   projectAmount: number;
   editorPayment: number;
   otherExpenses: number;
   advancePayment: number;
+  paymentMode?: string;
   remainingBalance: number;
+  paymentDueDate?: string; // YYYY-MM-DD custom payment due date
+  paymentReminderNotes?: string; // Custom reminder note
   notes?: string;
   createdAt: any;
   updatedAt: any;
   
   // Data manager fields
   hardDiskName?: string;
+  hardDriveNumber?: string;
+  backupDriveNumber?: string;
+  cloudDriveLink?: string;
+  selectedFunctions?: string[];
+  rawFootageSizeGB?: number;
+  finalExportSizeGB?: number;
   dataSize?: string; // e.g., "1.2 TB"
   backupStatus?: 'pending' | 'backed_up';
   googleDriveLink?: string;
@@ -89,14 +107,30 @@ export interface Task {
   createdAt: any;
 }
 
+export type AuditLogCategory = 'status' | 'financial' | 'assignment' | 'revision' | 'delivery' | 'data_manager' | 'general';
+export type AuditLogType = 'status_change' | 'amount_change' | 'assignment_change' | 'revision' | 'milestone' | 'creation' | 'deletion' | 'general';
+
 export interface Revision {
   id: string;
   projectId: string;
-  revisionNumber: number;
+  revisionNumber?: number;
   notes: string;
   date: string;
-  status: 'pending' | 'resolved';
+  status: 'pending' | 'resolved' | 'logged';
   createdAt: any;
+  // Audit trail extensions
+  type?: AuditLogType;
+  category?: AuditLogCategory;
+  projectCoupleName?: string;
+  studioName?: string;
+  changedField?: string;
+  previousValue?: any;
+  newValue?: any;
+  performedBy?: string;
+  performedByRole?: string;
+  performedByEmail?: string;
+  formattedDiff?: string;
+  isSystemGenerated?: boolean;
 }
 
 export interface Expense {
@@ -118,10 +152,20 @@ export interface PaymentHistory {
   projectCoupleName: string;
   amount: number;
   date: string;
+  dueDate?: string; // Optional payment due date / deadline
+  isOverdue?: boolean; // Optional manual overdue flag
   paymentMethod: string; // Cash, Bank Transfer, GPay, etc.
   notes?: string;
   receivedFrom?: string; // Person who initiated or made the payment
   createdAt: any;
+}
+
+export interface EditorShowcaseShot {
+  id: string;
+  url: string;
+  title: string;
+  coupleName?: string;
+  category?: 'Cinematic Teaser' | 'Full Film' | 'Traditional Cut' | 'Drone & Pre-Wedding' | 'Color Grading' | string;
 }
 
 export interface Editor {
@@ -133,6 +177,10 @@ export interface Editor {
   rating: number; // e.g. 4.8
   joinedDate: string;
   notes?: string;
+  bio?: string;
+  specialties?: string[];
+  experienceYears?: number;
+  showcaseShots?: EditorShowcaseShot[];
 }
 
 export interface AppNotification {
@@ -152,10 +200,19 @@ export interface CalendarEvent {
   id: string;
   title: string;
   start: string; // date
-  type: 'delivery' | 'shoot' | 'meeting' | 'revision';
+  type: 'delivery' | 'shoot' | 'edit' | 'meeting' | 'revision' | string;
   projectId?: string;
   coupleName?: string;
   color: string;
+}
+
+export interface ProjectTemplateTask {
+  id: string;
+  title: string;
+  description?: string;
+  daysFromShoot?: number; // e.g. +3 days
+  assignedRole?: 'primary_editor' | 'second_editor' | 'lead' | 'unassigned';
+  defaultAssignedEditorId?: string;
 }
 
 export interface ProjectTemplate {
@@ -165,12 +222,25 @@ export interface ProjectTemplate {
   eventType: string;
   deliverables: string[];
   milestones: string[];
+  tasks?: ProjectTemplateTask[];
   priority: ProjectPriority;
   defaultProjectAmount?: number;
   defaultEditorPayment?: number;
+  defaultOtherExpenses?: number;
+  defaultAdvancePercentage?: number; // e.g., 30 for 30%
+  isSplitProject?: boolean;
+  defaultFirstEditorShare?: number;
+  defaultSecondEditorShare?: number;
+  defaultPrimaryEditorId?: string;
+  defaultPrimaryEditorName?: string;
+  defaultSecondEditorId?: string;
+  defaultSecondEditorName?: string;
+  defaultTurnaroundDays?: number; // Days from shoot to delivery
+  estimatedDataSize?: string; // e.g., "1.5 TB"
   notes?: string;
   isDefault?: boolean;
   createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface StudioInvoiceProjectItem {
@@ -190,21 +260,49 @@ export interface StudioAdvancePaymentItem {
   paymentMode: string;
   amount: number;
   adjusted: boolean;
+  referenceNo?: string;
+  notes?: string;
+}
+
+export interface StudioInvoiceCustomItem {
+  id: string;
+  description: string;
+  category?: string;
+  sacCode: string;
+  unitRate: number;
+  quantity: number;
+  amount: number;
 }
 
 export interface StudioInvoice {
   id: string; // e.g. "AI-2026-0015"
+  invoiceNo?: string;
   studioId: string;
   studioName: string;
-  date: string;
+  date?: string; // legacy / display alias
+  issuedDate: string; // Issue date of the invoice (e.g. '2026-08-20')
+  dueDate: string; // Due date for payment (e.g. '2026-08-27')
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled'; // Current financial & settlement status
   projects: StudioInvoiceProjectItem[];
   advances: StudioAdvancePaymentItem[];
+  customItems?: StudioInvoiceCustomItem[];
   projectTotal: number;
   advanceTotal: number;
   previousBalance: number;
   discount: number;
   totalPayable: number;
-  paymentStatus: 'Full Payment' | 'Partial Payment' | 'Unpaid';
+  gstEnabled?: boolean;
+  showTaxMatrix?: boolean;
+  gstRate?: number;
+  gstTaxType?: 'intra' | 'inter';
+  taxableAmount?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  totalGstAmount?: number;
+  placeOfSupply?: string;
+  reverseCharge?: boolean;
+  paymentStatus?: 'Full Payment' | 'Partial Payment' | 'Unpaid';
   accountHolder: string;
   bankName: string;
   accountNumber: string;
@@ -212,5 +310,39 @@ export interface StudioInvoice {
   upiId: string;
   driveLink?: string;
   notes?: string;
+  pdfDocumentPath?: string;
+  pdfFileName?: string;
+  pdfDataUrl?: string;
+  templateLayout?: 'minimal' | 'professional';
+  signatureImageUrl?: string;
+  signatureSignatoryName?: string;
+  showSignature?: boolean;
+  selectedProjectsCount?: number;
   createdAt?: any;
+  updatedAt?: any;
 }
+
+export type RecycleBinItemType = 
+  | 'project' 
+  | 'studio' 
+  | 'editor' 
+  | 'expense' 
+  | 'payment' 
+  | 'calendar_event' 
+  | 'revision' 
+  | 'invoice';
+
+export interface RecycleBinItem {
+  id: string;
+  originalId: string;
+  itemType: RecycleBinItemType;
+  itemTitle: string;
+  itemSubtitle?: string;
+  data: any;
+  targetCollection: string;
+  deletedAt: any;
+  deletedBy?: string;
+  deletedByRole?: string;
+  deletedByEmail?: string;
+}
+

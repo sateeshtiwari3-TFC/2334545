@@ -9,7 +9,8 @@
         "projectName": { "type": "string" },
         "brideName": { "type": "string" },
         "groomName": { "type": "string" },
-        "status": { "type": "string" }
+        "status": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } }
       },
       "required": ["id", "projectName"]
     },
@@ -51,10 +52,12 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "invoiceNo": { "type": "string" },
         "projectId": { "type": "string" },
         "coupleName": { "type": "string" },
         "studioId": { "type": "string" },
         "studioName": { "type": "string" },
+        "issuedDate": { "type": "string" },
         "invoiceDate": { "type": "string" },
         "dueDate": { "type": "string" },
         "subtotal": { "type": "number" },
@@ -66,13 +69,98 @@
         "balanceDue": { "type": "number" },
         "status": { "type": "string" }
       },
-      "required": ["id", "projectId", "studioId", "totalAmount"]
+      "required": ["id", "studioId", "issuedDate", "dueDate", "status"]
+    },
+    "studioInvoices": {
+      "title": "Studio Invoices",
+      "description": "Studio tax invoices, GST billing records, issued dates, and due payment tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNo": { "type": "string" },
+        "studioId": { "type": "string" },
+        "studioName": { "type": "string" },
+        "issuedDate": { "type": "string" },
+        "invoiceDate": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "status": { "type": "string" },
+        "projectTotal": { "type": "number" },
+        "advanceTotal": { "type": "number" },
+        "previousBalance": { "type": "number" },
+        "discount": { "type": "number" },
+        "totalPayable": { "type": "number" },
+        "paymentStatus": { "type": "string" }
+      },
+      "required": ["id", "invoiceNo", "studioId", "issuedDate", "dueDate", "status", "totalPayable"]
+    },
+    "recycle_bin": {
+      "title": "Recycle Bin Items",
+      "description": "Archived and soft-deleted documents with full payload for one-click safety recovery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "originalId": { "type": "string" },
+        "itemType": { "type": "string" },
+        "itemTitle": { "type": "string" },
+        "itemSubtitle": { "type": "string" },
+        "targetCollection": { "type": "string" },
+        "deletedBy": { "type": "string" }
+      },
+      "required": ["id", "originalId", "itemType", "itemTitle", "targetCollection"]
+    },
+    "users": {
+      "title": "Users",
+      "description": "User accounts, roles, and profile settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "tasks": {
+      "title": "Tasks",
+      "description": "Production and editing milestone tasks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "projectId", "title"]
+    },
+    "project_templates": {
+      "title": "Project Templates",
+      "description": "Custom project blueprints, tasks, default budget splits, and milestone structures",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "eventType": { "type": "string" },
+        "priority": { "type": "string" },
+        "defaultProjectAmount": { "type": "number" },
+        "defaultEditorPayment": { "type": "number" },
+        "isDefault": { "type": "boolean" }
+      },
+      "required": ["id", "name", "eventType"]
     }
   },
   "firestore": {
+    "users/{userId}": {
+      "schema": "users",
+      "description": "User profile collection"
+    },
     "projects/{projectId}": {
       "schema": "projects",
       "description": "Wedding projects collection"
+    },
+    "project_templates/{templateId}": {
+      "schema": "project_templates",
+      "description": "Reusable wedding project templates and blueprints collection"
     },
     "notifications/{notificationId}": {
       "schema": "notifications",
@@ -85,6 +173,18 @@
     "invoices/{invoiceId}": {
       "schema": "invoices",
       "description": "Custom GST invoices collection"
+    },
+    "studioInvoices/{invoiceId}": {
+      "schema": "studioInvoices",
+      "description": "Studio tax invoices and due payment records collection"
+    },
+    "tasks/{taskId}": {
+      "schema": "tasks",
+      "description": "Production tasks collection"
+    },
+    "recycle_bin/{binId}": {
+      "schema": "recycle_bin",
+      "description": "Safe trash and recycle bin backup collection"
     }
   }
 }

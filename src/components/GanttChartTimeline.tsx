@@ -19,6 +19,7 @@ import {
   Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ProjectStatusBadge from './ProjectStatusBadge';
 import { 
   BarChart, 
   Bar, 
@@ -30,6 +31,7 @@ import {
   Cell,
   Legend
 } from 'recharts';
+import { SafeChartContainer } from './common/SafeChartContainer';
 import { Project, ProjectStatus, ProjectPriority } from '../types';
 
 interface GanttChartTimelineProps {
@@ -175,7 +177,10 @@ export default function GanttChartTimeline({
         completedMilestones: completedCount,
         totalMilestones: totalCount,
         priority: p.priority,
-        status: p.status
+        status: p.status,
+        projectAmount: Number(p.projectAmount) || 0,
+        advancePayment: Number(p.advancePayment) || 0,
+        remainingBalance: Number(p.remainingBalance) || 0
       };
     }).slice(0, 15);
   }, [filteredProjects]);
@@ -466,9 +471,12 @@ export default function GanttChartTimeline({
                           </div>
 
                           <div className="flex items-center space-x-2 text-[10px] font-mono pt-0.5">
-                            <span className={`px-2 py-0.5 rounded-md border font-bold uppercase ${statusClass}`}>
-                              {project.status}
-                            </span>
+                            <ProjectStatusBadge 
+                              status={project.status} 
+                              size="xs" 
+                              showDot={true} 
+                              showIcon={false}
+                            />
                             <button
                               type="button"
                               onClick={() => setSelectedDetailProject(project)}
@@ -532,24 +540,52 @@ export default function GanttChartTimeline({
             </div>
           </div>
 
-          <div className="h-80 w-full pt-4">
-            <ResponsiveContainer width="100%" height="100%">
+          <SafeChartContainer height={320} minHeight={260} className="pt-4">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={260}>
               <BarChart data={rechartsData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                 <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} />
                 <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#0f172a',
-                    borderColor: '#f59e0b',
-                    borderRadius: '12px',
-                    color: '#fff',
-                    fontSize: '12px'
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-[#0b111a] border border-amber-500/40 p-3.5 rounded-2xl text-xs font-mono text-gray-200 shadow-2xl space-y-2 min-w-[220px] backdrop-blur-xl">
+                          <div className="border-b border-white/10 pb-1.5 flex justify-between items-start">
+                            <div>
+                              <span className="font-bold text-white text-xs block font-display tracking-wide">{data.fullName || data.name}</span>
+                              <span className="text-[10px] text-amber-400 font-mono">{data.studio}</span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold border ${
+                              data.priority === 'urgent' ? 'bg-red-500/20 text-red-300 border-red-500/40' :
+                              data.priority === 'high' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
+                              'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                            }`}>
+                              {data.priority}
+                            </span>
+                          </div>
+                          <div className="space-y-1.5 text-[11px]">
+                            <div className="flex justify-between items-center text-amber-300">
+                              <span>Post-Production Span:</span>
+                              <span className="font-bold">{data.durationDays} Days</span>
+                            </div>
+                            <div className="flex justify-between items-center text-emerald-400">
+                              <span>Milestone Completion:</span>
+                              <span className="font-bold">{data.progress}% ({data.completedMilestones}/{data.totalMilestones} Steps)</span>
+                            </div>
+                            {data.projectAmount > 0 && (
+                              <div className="flex justify-between items-center text-gray-300 pt-1 border-t border-white/5 text-[10px]">
+                                <span>Contract Value:</span>
+                                <span className="font-bold text-emerald-400">₹{Number(data.projectAmount).toLocaleString('en-IN')}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
                   }}
-                  formatter={(value: any, name: any) => [
-                    name === 'durationDays' ? `${value} Days Schedule` : `${value}% Progress`,
-                    name === 'durationDays' ? 'Editing Span' : 'Milestone Completion'
-                  ]}
                 />
                 <Legend />
                 <Bar dataKey="durationDays" name="Editing Days Span" fill="#f59e0b" radius={[6, 6, 0, 0]}>
@@ -563,7 +599,7 @@ export default function GanttChartTimeline({
                 <Bar dataKey="progress" name="Milestone Progress (%)" fill="#10b981" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </SafeChartContainer>
         </div>
       )}
 
@@ -675,7 +711,9 @@ export default function GanttChartTimeline({
                 </div>
                 <div>
                   <span className="text-gray-400 text-[10px] uppercase block">Current Workflow Stage:</span>
-                  <strong className="text-emerald-400 uppercase">{selectedDetailProject.status}</strong>
+                  <div className="mt-0.5">
+                    <ProjectStatusBadge status={selectedDetailProject.status} size="xs" />
+                  </div>
                 </div>
                 <div>
                   <span className="text-gray-400 text-[10px] uppercase block">Priority Level:</span>

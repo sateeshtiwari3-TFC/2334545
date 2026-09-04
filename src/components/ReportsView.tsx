@@ -9,7 +9,10 @@ import {
   Percent,
   TrendingDown,
   Info,
-  FileDown
+  FileDown,
+  FileSpreadsheet,
+  Download,
+  Check
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -27,6 +30,7 @@ import {
   LineChart,
   Line
 } from 'recharts';
+import { SafeChartContainer } from './common/SafeChartContainer';
 import { Project, Studio, Editor, Expense } from '../types';
 
 interface ReportsViewProps {
@@ -80,21 +84,145 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
     expenseCategoriesMap['other'] = (expenseCategoriesMap['other'] || 0) + (p.otherExpenses || 0);
   });
 
+  const totalExpenseSum = Object.values(expenseCategoriesMap).reduce((a, b) => a + b, 0);
   const expenseAllocationData = Object.entries(expenseCategoriesMap).map(([key, val]) => {
-    const formattedLabel = key.replace('_', ' ').toUpperCase();
-    return { name: formattedLabel, value: val };
+    const formattedLabel = key.replace(/_/g, ' ').toUpperCase();
+    const sharePct = totalExpenseSum > 0 ? ((val / totalExpenseSum) * 100).toFixed(1) : '0.0';
+    return { 
+      name: formattedLabel, 
+      value: val,
+      sharePct,
+      categoryKey: key
+    };
   });
 
   const PIE_COLORS = ['#1e5546', '#d4af37', '#EF4444', '#3B82F6', '#8B5CF6', '#EC4899', '#6B7280'];
 
   // 5. Margin distribution analysis data
-  const profitMarginTrend = projectsWithProfit.slice(0, 5).map(p => ({
-    name: p.coupleName.substring(0, 10),
-    Profit: p.profit,
-    Amount: p.projectAmount
-  }));
+  const profitMarginTrend = projectsWithProfit.slice(0, 8).map(p => {
+    const expensesSum = (p.editorPayment || 0) + (p.otherExpenses || 0);
+    return {
+      name: p.coupleName.length > 12 ? `${p.coupleName.substring(0, 12)}...` : p.coupleName,
+      fullName: p.coupleName,
+      studio: p.studioName,
+      Profit: p.profit,
+      Amount: p.projectAmount,
+      Expenses: expensesSum,
+      editorPayment: p.editorPayment || 0,
+      otherExpenses: p.otherExpenses || 0,
+      margin: p.margin,
+      status: p.status,
+      id: p.id
+    };
+  });
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [csvExporting, setCsvExporting] = useState(false);
+  const [csvExported, setCsvExported] = useState(false);
+
+  const handleExportCSV = () => {
+    setCsvExporting(true);
+    try {
+      // Build RFC-4180 compliant CSV with Excel UTF-8 BOM
+      const headers = [
+        'Project ID',
+        'Wedding Campaign / Couple',
+        'Allied Studio Partner',
+        'Assigned Editor',
+        'Shoot Date',
+        'Delivery Date',
+        'Status',
+        'Contract Gross Amount (INR)',
+        'Advance Received (INR)',
+        'Pending Receivable (INR)',
+        'Editor Payout (INR)',
+        'Other Production Expenses (INR)',
+        'Total Production Cost (INR)',
+        'Net Operating Profit (INR)',
+        'Profit Margin (%)'
+      ];
+
+      const rows = projectsWithProfit.map(p => {
+        const expensesSum = (p.editorPayment || 0) + (p.otherExpenses || 0);
+        const advance = p.advancePayment || 0;
+        const pending = p.remainingBalance !== undefined ? p.remainingBalance : Math.max(0, (p.projectAmount || 0) - advance);
+        return [
+          `"${(p.id || '').replace(/"/g, '""')}"`,
+          `"${(p.coupleName || p.projectName || '').replace(/"/g, '""')}"`,
+          `"${(p.studioName || '').replace(/"/g, '""')}"`,
+          `"${(p.assignedEditorName || 'Unassigned').replace(/"/g, '""')}"`,
+          `"${p.shootDate || 'N/A'}"`,
+          `"${p.deliveryDate || 'N/A'}"`,
+          `"${(p.status || '').toUpperCase()}"`,
+          p.projectAmount || 0,
+          advance,
+          pending,
+          p.editorPayment || 0,
+          p.otherExpenses || 0,
+          expensesSum,
+          p.profit,
+          p.margin.toFixed(2)
+        ];
+      });
+
+      // Aggregate Summary Totals Row
+      const totalRevenue = projectsWithProfit.reduce((sum, p) => sum + (p.projectAmount || 0), 0);
+      const totalAdvance = projectsWithProfit.reduce((sum, p) => sum + (p.advancePayment || 0), 0);
+      const totalPending = projectsWithProfit.reduce((sum, p) => sum + (p.remainingBalance !== undefined ? p.remainingBalance : Math.max(0, (p.projectAmount || 0) - (p.advancePayment || 0))), 0);
+      const totalEditor = projectsWithProfit.reduce((sum, p) => sum + (p.editorPayment || 0), 0);
+      const totalOther = projectsWithProfit.reduce((sum, p) => sum + (p.otherExpenses || 0), 0);
+      const totalCosts = totalEditor + totalOther;
+      const totalProfit = totalRevenue - totalCosts;
+      const avgMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(2) : '0.00';
+
+      const totalsRow = [
+        '"TOTAL / PORTFOLIO AGGREGATE"',
+        `"Total Campaigns: ${projectsWithProfit.length}"`,
+        '""',
+        '""',
+        '""',
+        '""',
+        '""',
+        totalRevenue,
+        totalAdvance,
+        totalPending,
+        totalEditor,
+        totalOther,
+        totalCosts,
+        totalProfit,
+        avgMargin
+      ];
+
+      const csvContent = [
+        '# THE FRAME CUT STUDIO - EXECUTIVE PROFITABILITY AUDIT & TREND REPORT',
+        `# Generated on: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
+        `# Accounting Purpose: Profitability Trends, Production Ledger Reconciliation & Tax Audit`,
+        `# Total Gross Revenue: INR ${totalRevenue} | Total Production Outflows: INR ${totalCosts} | Net Profit: INR ${totalProfit} | Portfolio Margin: ${avgMargin}%`,
+        '',
+        headers.join(','),
+        ...rows.map(r => r.join(',')),
+        '',
+        totalsRow.join(',')
+      ].join('\r\n');
+
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Profitability_Trend_Audit_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setCsvExported(true);
+      setTimeout(() => setCsvExported(false), 2500);
+    } catch (err) {
+      console.error('Error generating CSV:', err);
+    } finally {
+      setCsvExporting(false);
+    }
+  };
 
   const handleDownloadPDF = async () => {
     setIsGenerating(true);
@@ -411,14 +539,36 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
           <h2 className="text-xl font-bold font-display text-white">System Reports & Margin Audits</h2>
           <p className="text-xs text-gray-400 mt-1">Durable financial ledgers, studio conversions, and editor volumes</p>
         </div>
-        <button
-          onClick={handleDownloadPDF}
-          disabled={isGenerating}
-          className="px-4 py-2.5 bg-gradient-to-r from-luxury-green-800 to-luxury-green-900 hover:from-luxury-green-700 hover:to-luxury-green-800 border border-gold-500/30 text-gold-400 hover:text-gold-300 font-mono text-xs font-semibold rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-black/20"
-        >
-          <FileDown className="w-4 h-4" />
-          {isGenerating ? 'GENERATING PDF...' : 'DOWNLOAD PDF REPORT'}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleExportCSV}
+            disabled={csvExporting}
+            id="export-profitability-csv-btn"
+            className="px-4 py-2.5 bg-gradient-to-r from-emerald-950/80 to-luxury-green-900/90 hover:from-emerald-900 hover:to-luxury-green-800 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 font-mono text-xs font-semibold rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-black/20"
+          >
+            {csvExported ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span className="text-emerald-300">CSV DOWNLOADED</span>
+              </>
+            ) : (
+              <>
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                <span>{csvExporting ? 'EXPORTING CSV...' : 'EXPORT TO CSV'}</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleDownloadPDF}
+            disabled={isGenerating}
+            id="download-pdf-report-btn"
+            className="px-4 py-2.5 bg-gradient-to-r from-luxury-green-800 to-luxury-green-900 hover:from-luxury-green-700 hover:to-luxury-green-800 border border-gold-500/30 text-gold-400 hover:text-gold-300 font-mono text-xs font-semibold rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-black/20"
+          >
+            <FileDown className="w-4 h-4" />
+            {isGenerating ? 'GENERATING PDF...' : 'DOWNLOAD PDF REPORT'}
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
@@ -477,12 +627,22 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
         
         {/* Margin Distribution chart */}
         <div className="p-6 rounded-3xl glass-panel relative">
-          <div>
-            <h3 className="text-lg font-bold font-display text-white">Profit margins per campaign</h3>
-            <p className="text-xs text-gray-400 mb-6">Contract gross values versus company profit cuts</p>
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h3 className="text-lg font-bold font-display text-white">Profit margins per campaign</h3>
+              <p className="text-xs text-gray-400 mt-1">Contract gross values versus company profit cuts</p>
+            </div>
+            <button
+              onClick={handleExportCSV}
+              title="Export margin trends to CSV"
+              className="px-2.5 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/30 text-emerald-300 font-mono text-[10px] font-medium rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>CSV</span>
+            </button>
           </div>
 
-          <div className="h-72">
+          <SafeChartContainer height={288} minHeight={240}>
             {profitMarginTrend.length > 0 ? (
               <ResponsiveContainer width="100%" height={288} minWidth={100}>
                 <LineChart data={profitMarginTrend}>
@@ -490,11 +650,71 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
                   <XAxis dataKey="name" stroke="#6b7280" fontSize={11} tickLine={false} />
                   <YAxis stroke="#6b7280" fontSize={11} tickLine={false} />
                   <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#11141a', 
-                      border: '1px solid rgba(212, 175, 55, 0.3)',
-                      borderRadius: '12px'
-                    }} 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-[#0e131b] border border-gold-500/40 p-3.5 rounded-2xl text-xs font-mono text-gray-200 shadow-2xl space-y-2.5 min-w-[240px] backdrop-blur-xl">
+                            <div className="flex items-start justify-between border-b border-white/10 pb-2 gap-2">
+                              <div>
+                                <span className="font-bold text-white text-xs block font-display tracking-wide">{data.fullName || data.name}</span>
+                                <span className="text-[10px] text-gray-400 font-mono block">{data.studio} • {data.id}</span>
+                              </div>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border shrink-0 ${
+                                data.margin >= 50 
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
+                                  : data.margin >= 30 
+                                  ? 'bg-gold-500/20 text-gold-300 border-gold-500/40' 
+                                  : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              }`}>
+                                {data.margin ? Number(data.margin).toFixed(1) : '0'}% Margin
+                              </span>
+                            </div>
+
+                            <div className="space-y-1.5 text-[11px]">
+                              <div className="flex justify-between items-center text-emerald-400">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                                  <span>Contract Gross Value:</span>
+                                </span>
+                                <span className="font-bold">₹{Number(data.Amount || 0).toLocaleString('en-IN')}</span>
+                              </div>
+
+                              <div className="flex justify-between items-center text-rose-400">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-rose-400" />
+                                  <span>Production Costs:</span>
+                                </span>
+                                <span className="font-bold">₹{Number(data.Expenses || 0).toLocaleString('en-IN')}</span>
+                              </div>
+
+                              {data.editorPayment > 0 && (
+                                <div className="flex justify-between items-center text-gray-400 pl-3.5 text-[10px]">
+                                  <span>↳ Editor Payout:</span>
+                                  <span>₹{Number(data.editorPayment).toLocaleString('en-IN')}</span>
+                                </div>
+                              )}
+
+                              {data.otherExpenses > 0 && (
+                                <div className="flex justify-between items-center text-gray-400 pl-3.5 text-[10px]">
+                                  <span>↳ Other Expenses:</span>
+                                  <span>₹{Number(data.otherExpenses).toLocaleString('en-IN')}</span>
+                                </div>
+                              )}
+
+                              <div className="border-t border-white/10 pt-2 flex justify-between items-center text-gold-300 font-bold">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-gold-400" />
+                                  <span>Net Operating Profit:</span>
+                                </span>
+                                <span className="text-xs">₹{Number(data.Profit || 0).toLocaleString('en-IN')}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
                   />
                   <Line type="monotone" dataKey="Amount" stroke="#1e5546" strokeWidth={3} activeDot={{ r: 8 }} name="Contract value" />
                   <Line type="monotone" dataKey="Profit" stroke="#d4af37" strokeWidth={3} name="Operating Profit" />
@@ -503,7 +723,7 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500 font-mono text-xs">No project margin history log.</div>
             )}
-          </div>
+          </SafeChartContainer>
         </div>
 
         {/* Expense categories allocation pie chart */}
@@ -514,7 +734,7 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
           </div>
 
           <div className="h-72 flex flex-col md:flex-row items-center justify-between">
-            <div className="w-full md:w-1/2 h-[288px]">
+            <SafeChartContainer height={288} minHeight={240} className="w-full md:w-1/2">
               {expenseAllocationData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={288} minWidth={100}>
                   <PieChart>
@@ -532,18 +752,42 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
                       ))}
                     </Pie>
                     <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#11141a', 
-                        border: '1px solid rgba(212, 175, 55, 0.3)',
-                        borderRadius: '12px'
-                      }} 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-[#0e131b] border border-gold-500/40 p-3.5 rounded-2xl text-xs font-mono text-gray-200 shadow-2xl space-y-2 min-w-[210px] backdrop-blur-xl">
+                              <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                                <span className="font-bold text-white text-xs">{data.name}</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-gold-500/15 border border-gold-500/30 text-gold-300 font-bold">
+                                  {data.sharePct}% share
+                                </span>
+                              </div>
+
+                              <div className="space-y-1.5 text-[11px]">
+                                <div className="flex justify-between items-center text-gray-300">
+                                  <span>Allocated Expense:</span>
+                                  <span className="font-bold text-emerald-400 text-xs">
+                                    ₹{Number(data.value || 0).toLocaleString('en-IN')}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center text-gray-400 text-[10px] pt-1 border-t border-white/5">
+                                  <span>Total Outflow Pool:</span>
+                                  <span className="text-gray-200 font-mono">₹{totalExpenseSum.toLocaleString('en-IN')}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-500 font-mono text-xs">No recorded expense ledger.</div>
               )}
-            </div>
+            </SafeChartContainer>
 
             <div className="w-full md:w-1/2 space-y-2 mt-4 md:mt-0 font-mono text-[11px] text-gray-400 max-h-[220px] overflow-y-auto">
               {expenseAllocationData.map((item, idx) => (
@@ -562,9 +806,19 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
 
       {/* Detailed campaign audits list */}
       <div className="p-6 rounded-3xl glass-panel">
-        <div>
-          <h3 className="text-lg font-bold font-display text-white">Engagement Margin Audit Sheet</h3>
-          <p className="text-xs text-gray-400 mb-6">Individual contract accounting audits for tax seasons</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+          <div>
+            <h3 className="text-lg font-bold font-display text-white">Engagement Margin Audit Sheet</h3>
+            <p className="text-xs text-gray-400 mt-1">Individual contract accounting audits for tax seasons</p>
+          </div>
+          <button
+            onClick={handleExportCSV}
+            disabled={csvExporting}
+            className="px-3 py-1.5 bg-luxury-green-950/70 hover:bg-luxury-green-900 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200 font-mono text-xs font-semibold rounded-xl flex items-center gap-2 transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+            <span>EXPORT AUDIT CSV</span>
+          </button>
         </div>
 
         <div className="rounded-2xl border border-luxury-green-800/10 overflow-hidden bg-charcoal-950/20 text-xs">
