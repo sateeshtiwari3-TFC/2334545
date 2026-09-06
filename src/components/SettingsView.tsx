@@ -1953,8 +1953,8 @@ export default function SettingsView({
                               </span>
                             </div>
                           ) : (
-                            <div className="overflow-x-auto rounded-xl border border-white/5">
-                              <table className="w-full text-left font-mono text-xs">
+                            <div className="overflow-x-auto custom-scrollbar rounded-xl border border-white/5">
+                              <table className="w-full min-w-[500px] text-left font-mono text-xs">
                                 <thead className="bg-charcoal-900 text-gray-400 border-b border-white/5 text-[10px] uppercase">
                                   <tr>
                                     <th className="p-2.5">Date</th>

@@ -4297,7 +4297,7 @@ export default function InvoiceView({
                   </span>
                 </div>
 
-                <div ref={liveInvoicePreviewRef} className="shadow-2xl overflow-hidden rounded-3xl">
+                <div ref={liveInvoicePreviewRef} className="shadow-2xl overflow-x-auto custom-scrollbar rounded-3xl w-full">
                   <GstInvoiceSheet
                     id="live-gst-invoice-sheet"
                     invoiceNo={invoiceNo}

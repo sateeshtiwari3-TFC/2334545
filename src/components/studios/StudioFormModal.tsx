@@ -13,7 +13,8 @@ import {
   IndianRupee, 
   Crown, 
   Sparkles,
-  QrCode
+  QrCode,
+  RotateCcw
 } from 'lucide-react';
 import { Studio } from '../../types';
 import { compressImage } from '../../utils';
@@ -77,6 +78,36 @@ export const StudioFormModal: React.FC<StudioFormModalProps> = ({
       setTier('standard');
     }
   }, [editingStudio, isOpen]);
+
+  const handleResetForm = () => {
+    if (editingStudio) {
+      setName(editingStudio.name || '');
+      setOwnerName(editingStudio.ownerName || '');
+      setPhone(editingStudio.phone || '');
+      setEmail(editingStudio.email || '');
+      setAddress(editingStudio.address || '');
+      setCity(editingStudio.city || '');
+      setGstNumber(editingStudio.gstNumber || '');
+      setNotes(editingStudio.notes || '');
+      setLogoUrl(editingStudio.logoUrl || '');
+      setUpiId(editingStudio.upiId || '');
+      setPaymentLink(editingStudio.paymentLink || '');
+      setTier(editingStudio.tier || 'standard');
+    } else {
+      setName('');
+      setOwnerName('');
+      setPhone('');
+      setEmail('');
+      setAddress('');
+      setCity('');
+      setGstNumber('');
+      setNotes('');
+      setLogoUrl('');
+      setUpiId('');
+      setPaymentLink('');
+      setTier('standard');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -474,14 +505,25 @@ export const StudioFormModal: React.FC<StudioFormModalProps> = ({
                 </div>
 
                 {/* Form Footer Action Buttons */}
-                <div className="flex items-center justify-end space-x-3 pt-6 border-t border-white/10 mt-6">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2.5 text-xs text-gray-400 hover:text-white"
-                  >
-                    Cancel
-                  </button>
+                <div className="flex items-center justify-between pt-6 border-t border-white/10 mt-6">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="px-4 py-2.5 text-xs text-gray-400 hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetForm}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-charcoal-900 hover:bg-sky-500/20 text-gray-400 hover:text-sky-300 border border-white/10 hover:border-sky-500/30 rounded-xl text-xs font-mono transition-all cursor-pointer"
+                      title="Reset form fields"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reset Form</span>
+                    </button>
+                  </div>
                   <button
                     type="submit"
                     disabled={isSaving}

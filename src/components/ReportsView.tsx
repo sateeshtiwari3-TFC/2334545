@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   BarChart3, 
   TrendingUp, 
@@ -12,7 +12,17 @@ import {
   FileDown,
   FileSpreadsheet,
   Download,
-  Check
+  Check,
+  Clock,
+  Calendar,
+  Zap,
+  ArrowUpRight,
+  CheckCircle2,
+  ChevronRight,
+  Layers,
+  Award,
+  Timer,
+  Activity
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -28,7 +38,8 @@ import {
   Pie, 
   Cell,
   LineChart,
-  Line
+  Line,
+  ReferenceLine
 } from 'recharts';
 import { SafeChartContainer } from './common/SafeChartContainer';
 import { Project, Studio, Editor, Expense } from '../types';
@@ -115,6 +126,322 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
       id: p.id
     };
   });
+
+  // Quarter selector for Studio Performance (defaults to last_quarter as requested)
+  type QuarterFilter = 'last_quarter' | 'current_quarter' | 'trailing_90' | 'all_time';
+  const [studioQuarter, setStudioQuarter] = useState<QuarterFilter>('last_quarter');
+
+  // Compute quarter configurations based on active FY context (FY 2026-27)
+  const quarterPresets = useMemo(() => {
+    const baseYear = 2026;
+    
+    // FY 2026-27 Definitions
+    // Last Completed Fiscal Quarter: Q1 FY 2026-27 (Apr 1, 2026 – Jun 30, 2026)
+    const lastQuarterStart = new Date(baseYear, 3, 1, 0, 0, 0);
+    const lastQuarterEnd = new Date(baseYear, 5, 30, 23, 59, 59, 999);
+
+    // Current Fiscal Quarter: Q2 FY 2026-27 (Jul 1, 2026 – Sep 30, 2026)
+    const currentQuarterStart = new Date(baseYear, 6, 1, 0, 0, 0);
+    const currentQuarterEnd = new Date(baseYear, 8, 30, 23, 59, 59, 999);
+
+    // Trailing 90 Days rolling window from current date
+    const now = new Date(baseYear, 8, 5); // Sep 5, 2026
+    const trailing90Start = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const trailing90End = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    return {
+      last_quarter: {
+        id: 'last_quarter' as QuarterFilter,
+        label: 'Last Quarter (Apr – Jun 2026)',
+        shortLabel: 'Last Quarter (Q1)',
+        periodDesc: 'Q1 FY 2026–27 (Apr 1 – Jun 30, 2026)',
+        startDate: lastQuarterStart,
+        endDate: lastQuarterEnd
+      },
+      current_quarter: {
+        id: 'current_quarter' as QuarterFilter,
+        label: 'Current Quarter (Jul – Sep 2026)',
+        shortLabel: 'Current Qtr (Q2)',
+        periodDesc: 'Q2 FY 2026–27 (Jul 1 – Sep 30, 2026)',
+        startDate: currentQuarterStart,
+        endDate: currentQuarterEnd
+      },
+      trailing_90: {
+        id: 'trailing_90' as QuarterFilter,
+        label: 'Trailing 90 Days',
+        shortLabel: 'Trailing 90d',
+        periodDesc: 'Rolling 90 Days Production Window',
+        startDate: trailing90Start,
+        endDate: trailing90End
+      },
+      all_time: {
+        id: 'all_time' as QuarterFilter,
+        label: 'All-Time Pipeline',
+        shortLabel: 'All-Time Records',
+        periodDesc: 'All Recorded Historical Contracts',
+        startDate: new Date(2020, 0, 1),
+        endDate: new Date(2030, 11, 31)
+      }
+    };
+  }, []);
+
+  // Studio Performance Analytics (Turnaround time + Total Volume of Work Processed)
+  const studioPerformanceData = useMemo(() => {
+    const activeRange = quarterPresets[studioQuarter];
+    const { startDate, endDate } = activeRange;
+
+    // Filter projects matching this quarter period
+    const filteredProjects = projects.filter(p => {
+      if (studioQuarter === 'all_time') return true;
+
+      let inRange = false;
+      if (p.shootDate) {
+        const d = new Date(p.shootDate + (p.shootDate.includes('T') ? '' : 'T12:00:00'));
+        if (!isNaN(d.getTime()) && d >= startDate && d <= endDate) inRange = true;
+      }
+      if (!inRange && p.deliveryDate) {
+        const d = new Date(p.deliveryDate + (p.deliveryDate.includes('T') ? '' : 'T12:00:00'));
+        if (!isNaN(d.getTime()) && d >= startDate && d <= endDate) inRange = true;
+      }
+      if (!inRange && p.createdAt) {
+        const d = p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000) : new Date(p.createdAt);
+        if (!isNaN(d.getTime()) && d >= startDate && d <= endDate) inRange = true;
+      }
+      return inRange;
+    });
+
+    // Helper to calculate turnaround time in days for a single project (shoot/intake to delivery)
+    const getProjectTurnaround = (p: Project): number | null => {
+      let start: Date | null = null;
+      let end: Date | null = null;
+
+      if (p.shootDate) {
+        const s = new Date(p.shootDate + (p.shootDate.includes('T') ? '' : 'T12:00:00'));
+        if (!isNaN(s.getTime())) start = s;
+      } else if (p.createdAt) {
+        const c = p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000) : new Date(p.createdAt);
+        if (!isNaN(c.getTime())) start = c;
+      }
+
+      if (p.deliveryDate) {
+        const d = new Date(p.deliveryDate + (p.deliveryDate.includes('T') ? '' : 'T12:00:00'));
+        if (!isNaN(d.getTime())) end = d;
+      }
+
+      if (start && end) {
+        const diffMs = end.getTime() - start.getTime();
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays > 0) return diffDays;
+      }
+      return null;
+    };
+
+    interface StudioPerfRecord {
+      studioId: string;
+      studioName: string;
+      ownerName: string;
+      city: string;
+      phone: string;
+      tier?: string;
+      totalProjects: number;
+      completedProjects: number;
+      activeProjects: number;
+      totalVolumeAmount: number;
+      turnaroundDaysList: number[];
+      avgTurnaroundDays: number | null;
+      minTurnaroundDays: number | null;
+      maxTurnaroundDays: number | null;
+      projects: Project[];
+    }
+
+    const studioMap = new Map<string, StudioPerfRecord>();
+
+    // Initialize all registered studios
+    studios.forEach(s => {
+      studioMap.set(s.id, {
+        studioId: s.id,
+        studioName: s.name || 'Unnamed Studio',
+        ownerName: s.ownerName || '',
+        city: s.city || s.address || '',
+        phone: s.phone || '',
+        tier: s.tier,
+        totalProjects: 0,
+        completedProjects: 0,
+        activeProjects: 0,
+        totalVolumeAmount: 0,
+        turnaroundDaysList: [],
+        avgTurnaroundDays: null,
+        minTurnaroundDays: null,
+        maxTurnaroundDays: null,
+        projects: []
+      });
+    });
+
+    // Process all quarter projects
+    filteredProjects.forEach(p => {
+      const sId = p.studioId || 'direct-client';
+      const sName = p.studioName || 'Direct Client / Unassigned';
+
+      if (!studioMap.has(sId)) {
+        studioMap.set(sId, {
+          studioId: sId,
+          studioName: sName,
+          ownerName: '',
+          city: '',
+          phone: '',
+          totalProjects: 0,
+          completedProjects: 0,
+          activeProjects: 0,
+          totalVolumeAmount: 0,
+          turnaroundDaysList: [],
+          avgTurnaroundDays: null,
+          minTurnaroundDays: null,
+          maxTurnaroundDays: null,
+          projects: []
+        });
+      }
+
+      const rec = studioMap.get(sId)!;
+      rec.totalProjects += 1;
+      rec.totalVolumeAmount += Number(p.projectAmount) || 0;
+      rec.projects.push(p);
+
+      if (['delivered', 'closed'].includes(p.status)) {
+        rec.completedProjects += 1;
+      } else {
+        rec.activeProjects += 1;
+      }
+
+      const tDays = getProjectTurnaround(p);
+      if (tDays !== null) {
+        rec.turnaroundDaysList.push(tDays);
+      }
+    });
+
+    // Compute averages, minimum, and maximum turnaround per studio
+    const list = Array.from(studioMap.values()).map(rec => {
+      const arr = rec.turnaroundDaysList;
+      const avg = arr.length > 0 ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null;
+      const min = arr.length > 0 ? Math.min(...arr) : null;
+      const max = arr.length > 0 ? Math.max(...arr) : null;
+      return {
+        ...rec,
+        avgTurnaroundDays: avg,
+        minTurnaroundDays: min,
+        maxTurnaroundDays: max
+      };
+    });
+
+    // Sort by work volume descending
+    const sorted = list.sort((a, b) => (b.totalProjects - a.totalProjects) || (b.totalVolumeAmount - a.totalVolumeAmount));
+
+    const totalProjectsInPeriod = sorted.reduce((acc, s) => acc + s.totalProjects, 0);
+    const totalVolumeAmountInPeriod = sorted.reduce((acc, s) => acc + s.totalVolumeAmount, 0);
+
+    const allTurnaroundDays = sorted.flatMap(s => s.turnaroundDaysList);
+    const fleetAvgTurnaround = allTurnaroundDays.length > 0
+      ? Math.round((allTurnaroundDays.reduce((a, b) => a + b, 0) / allTurnaroundDays.length) * 10) / 10
+      : null;
+
+    const studiosWithTurnaround = sorted.filter(s => s.avgTurnaroundDays !== null && s.avgTurnaroundDays > 0);
+    const fastestStudio = studiosWithTurnaround.length > 0
+      ? [...studiosWithTurnaround].sort((a, b) => (a.avgTurnaroundDays || 999) - (b.avgTurnaroundDays || 999))[0]
+      : null;
+
+    const topVolumeStudio = sorted.length > 0 && (sorted[0].totalProjects > 0 || sorted[0].totalVolumeAmount > 0)
+      ? sorted[0]
+      : null;
+
+    // Chart dataset: Average Turnaround Days
+    const turnaroundChartData = sorted
+      .filter(s => s.avgTurnaroundDays !== null || s.totalProjects > 0)
+      .map(s => ({
+        name: s.studioName.length > 14 ? `${s.studioName.substring(0, 14)}...` : s.studioName,
+        fullName: s.studioName,
+        turnaround: s.avgTurnaroundDays || 0,
+        projects: s.totalProjects,
+        volume: s.totalVolumeAmount
+      }));
+
+    // Chart dataset: Volume of Work Processed
+    const volumeChartData = sorted
+      .filter(s => s.totalProjects > 0 || s.totalVolumeAmount > 0)
+      .map(s => ({
+        name: s.studioName.length > 14 ? `${s.studioName.substring(0, 14)}...` : s.studioName,
+        fullName: s.studioName,
+        projects: s.totalProjects,
+        completed: s.completedProjects,
+        active: s.activeProjects,
+        amount: s.totalVolumeAmount,
+        amountInK: Math.round(s.totalVolumeAmount / 1000)
+      }));
+
+    return {
+      studios: sorted,
+      totalProjectsInPeriod,
+      totalVolumeAmountInPeriod,
+      fleetAvgTurnaround,
+      fastestStudio,
+      topVolumeStudio,
+      turnaroundChartData,
+      volumeChartData,
+      activeRange
+    };
+  }, [projects, studios, studioQuarter, quarterPresets]);
+
+  // Handler to export Studio Performance CSV
+  const handleExportStudioPerformanceCSV = () => {
+    try {
+      const headers = [
+        'Studio Partner',
+        'Owner Name',
+        'City / Location',
+        'Phone',
+        'Reporting Period',
+        'Total Work Volume (Projects)',
+        'Completed / Delivered Films',
+        'Active In-Production',
+        'Total Contract Volume (INR)',
+        'Average Turnaround (Days)',
+        'Fastest Turnaround (Days)',
+        'Longest Turnaround (Days)',
+        'Production Velocity Rating'
+      ];
+
+      const rows = studioPerformanceData.studios.map(s => {
+        const rating = s.avgTurnaroundDays !== null 
+          ? (s.avgTurnaroundDays <= 20 ? 'Express (<20d)' : s.avgTurnaroundDays <= 45 ? 'Standard (20-45d)' : 'Extended (>45d)')
+          : (s.totalProjects > 0 ? 'In Production' : 'Idle / No Pipeline');
+        return [
+          `"${(s.studioName || '').replace(/"/g, '""')}"`,
+          `"${(s.ownerName || '').replace(/"/g, '""')}"`,
+          `"${(s.city || '').replace(/"/g, '""')}"`,
+          `"${(s.phone || '').replace(/"/g, '""')}"`,
+          `"${studioPerformanceData.activeRange.label}"`,
+          s.totalProjects,
+          s.completedProjects,
+          s.activeProjects,
+          s.totalVolumeAmount,
+          s.avgTurnaroundDays !== null ? s.avgTurnaroundDays : 'N/A',
+          s.minTurnaroundDays !== null ? s.minTurnaroundDays : 'N/A',
+          s.maxTurnaroundDays !== null ? s.maxTurnaroundDays : 'N/A',
+          `"${rating}"`
+        ].join(',');
+      });
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Studio_Performance_Audit_${studioQuarter}_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Failed to export Studio Performance CSV:', err);
+    }
+  };
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [csvExporting, setCsvExporting] = useState(false);
@@ -506,6 +833,112 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
         currentY += 7.5;
       });
 
+      // SECTION 5: STUDIO PERFORMANCE & TURNAROUND AUDIT
+      if (currentY > 200) {
+        doc.addPage();
+        currentY = 20;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text('THE FRAME CUT STUDIO — STUDIO PERFORMANCE AUDIT', 15, 12);
+        doc.setDrawColor(220, 220, 220);
+        doc.line(15, 14, 195, 14);
+      } else {
+        currentY += 12;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(26, 58, 42);
+      doc.text(`V. STUDIO PERFORMANCE & PRODUCTION VELOCITY (${studioPerformanceData.activeRange.shortLabel.toUpperCase()})`, 15, currentY);
+      doc.setDrawColor(212, 175, 55);
+      doc.line(15, currentY + 2, 195, currentY + 2);
+      currentY += 8;
+
+      // Studio Performance Summary Line
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`Quarter: ${studioPerformanceData.activeRange.periodDesc}  |  Fleet Avg Turnaround: ${studioPerformanceData.fleetAvgTurnaround !== null ? `${studioPerformanceData.fleetAvgTurnaround} Days` : 'N/A'}  |  Total Work Volume: INR ${studioPerformanceData.totalVolumeAmountInPeriod.toLocaleString('en-IN')} (${studioPerformanceData.totalProjectsInPeriod} Projects)`, 15, currentY);
+      currentY += 6;
+
+      // Table Header for Studio Performance
+      doc.setFillColor(26, 58, 42);
+      doc.rect(15, currentY, 180, 8, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text('STUDIO PARTNER', 18, currentY + 5.5);
+      doc.text('VOLUME (PRJ)', 85, currentY + 5.5, { align: 'right' });
+      doc.text('CONTRACT VALUE', 125, currentY + 5.5, { align: 'right' });
+      doc.text('AVG TURNAROUND', 160, currentY + 5.5, { align: 'right' });
+      doc.text('VELOCITY TIER', 190, currentY + 5.5, { align: 'right' });
+      currentY += 8;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(34, 34, 34);
+
+      studioPerformanceData.studios.forEach((s, idx) => {
+        if (currentY > 275) {
+          doc.addPage();
+          currentY = 20;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.setTextColor(120, 120, 120);
+          doc.text('THE FRAME CUT STUDIO — STUDIO PERFORMANCE AUDIT (CONTINUED)', 15, 12);
+          doc.setDrawColor(220, 220, 220);
+          doc.line(15, 14, 195, 14);
+          currentY = 25;
+
+          // Re-draw table header on new page
+          doc.setFillColor(26, 58, 42);
+          doc.rect(15, currentY, 180, 8, 'F');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.setTextColor(255, 255, 255);
+          doc.text('STUDIO PARTNER', 18, currentY + 5.5);
+          doc.text('VOLUME (PRJ)', 85, currentY + 5.5, { align: 'right' });
+          doc.text('CONTRACT VALUE', 125, currentY + 5.5, { align: 'right' });
+          doc.text('AVG TURNAROUND', 160, currentY + 5.5, { align: 'right' });
+          doc.text('VELOCITY TIER', 190, currentY + 5.5, { align: 'right' });
+          currentY += 8;
+        }
+
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 248);
+          doc.rect(15, currentY, 180, 7.5, 'F');
+        } else {
+          doc.setFillColor(255, 255, 255);
+          doc.rect(15, currentY, 180, 7.5, 'F');
+        }
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(34, 34, 34);
+        doc.text(s.studioName, 18, currentY + 4);
+        doc.setFontSize(6.5);
+        doc.setTextColor(120, 120, 120);
+        doc.text(s.ownerName ? `${s.ownerName}${s.city ? ` • ${s.city}` : ''}` : (s.city || 'Partner Studio'), 18, currentY + 6.5);
+
+        doc.setFontSize(7.5);
+        doc.setTextColor(34, 34, 34);
+        doc.text(`${s.totalProjects} (${s.completedProjects} done)`, 85, currentY + 5, { align: 'right' });
+        doc.text(`INR ${s.totalVolumeAmount.toLocaleString('en-IN')}`, 125, currentY + 5, { align: 'right' });
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(184, 149, 48); // Gold
+        doc.text(s.avgTurnaroundDays !== null ? `${s.avgTurnaroundDays} Days` : 'N/A', 160, currentY + 5, { align: 'right' });
+
+        const velocityTier = s.avgTurnaroundDays !== null
+          ? (s.avgTurnaroundDays <= 20 ? 'Express' : s.avgTurnaroundDays <= 45 ? 'Standard' : 'Extended')
+          : (s.totalProjects > 0 ? 'In Queue' : 'Idle');
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(26, 58, 42);
+        doc.text(velocityTier, 190, currentY + 5, { align: 'right' });
+
+        currentY += 7.5;
+      });
+
       // Footer
       if (currentY > 270) {
         doc.addPage();
@@ -621,6 +1054,474 @@ export default function ReportsView({ projects, studios, editors, expenses }: Re
           </div>
         </div>
       </div>
+
+      {/* ================= 2. STUDIO PERFORMANCE SECTION ================= */}
+      <section id="studio-performance-section" aria-label="Studio Performance" className="p-6 sm:p-8 rounded-3xl glass-panel relative border border-luxury-green-800/30 space-y-6 shadow-2xl">
+        {/* Section Header & Period Filters */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-white/5">
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="px-2.5 py-0.5 rounded-full bg-gold-500/10 border border-gold-500/30 text-gold-400 font-mono text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                <Building2 className="w-3 h-3" />
+                Quarterly Partner Velocity
+              </span>
+              <span className="text-xs text-gray-400 font-mono hidden sm:inline">•</span>
+              <span className="text-xs text-emerald-400 font-mono hidden sm:inline">
+                {studioPerformanceData.activeRange.periodDesc}
+              </span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-bold font-display text-white tracking-tight flex items-center gap-2">
+              <span>Studio Performance</span>
+            </h3>
+            <p className="text-xs text-gray-400 mt-1 max-w-2xl leading-relaxed">
+              Calculates average project turnaround time (shoot-to-delivery) and total volume of work processed per studio partner over the selected quarter.
+            </p>
+          </div>
+
+          {/* Quarter Selection Buttons & CSV Export */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="p-1 rounded-2xl bg-charcoal-950/80 border border-white/10 flex flex-wrap gap-1">
+              {(Object.keys(quarterPresets) as QuarterFilter[]).map((qKey) => {
+                const preset = quarterPresets[qKey];
+                const isActive = studioQuarter === qKey;
+                return (
+                  <button
+                    key={qKey}
+                    id={`quarter-btn-${qKey}`}
+                    onClick={() => setStudioQuarter(qKey)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-all flex items-center gap-1.5 ${
+                      isActive
+                        ? 'bg-gold-500 text-charcoal-950 font-bold shadow-md shadow-gold-500/20'
+                        : 'text-gray-400 hover:text-white hover:bg-charcoal-800'
+                    }`}
+                  >
+                    {isActive && <CheckCircle2 className="w-3 h-3 text-charcoal-950" />}
+                    <span>{preset.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              id="export-studio-perf-csv-btn"
+              onClick={handleExportStudioPerformanceCSV}
+              className="px-3.5 py-1.5 rounded-xl bg-charcoal-900/90 hover:bg-charcoal-800 border border-gold-500/30 text-gold-300 hover:text-gold-200 text-xs font-mono transition-all flex items-center gap-1.5 shadow-sm"
+              title="Export Studio Performance to CSV"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-gold-400" />
+              <span className="hidden sm:inline">Studio CSV</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 4 KPI Summary Cards for Studio Performance */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: Average Project Turnaround */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-charcoal-900/60 border border-white/5 hover:border-gold-500/30 transition-all flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-mono text-gray-400 uppercase tracking-wider">Avg Project Turnaround</span>
+              <div className="p-2 rounded-xl bg-gold-500/10 text-gold-400">
+                <Clock className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-bold font-display text-white">
+                  {studioPerformanceData.fleetAvgTurnaround !== null ? `${studioPerformanceData.fleetAvgTurnaround}` : 'N/A'}
+                </span>
+                {studioPerformanceData.fleetAvgTurnaround !== null && (
+                  <span className="text-xs font-mono text-gold-400 font-semibold">Days Avg</span>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1 font-mono flex items-center gap-1">
+                <Timer className="w-3 h-3 text-gold-400/70 shrink-0" />
+                <span>Shoot to delivery elapsed time</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Card 2: Total Volume Processed */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-charcoal-900/60 border border-white/5 hover:border-emerald-500/30 transition-all flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-mono text-gray-400 uppercase tracking-wider">Total Volume Processed</span>
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                <Layers className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-bold font-display text-emerald-400 truncate">
+                  ₹{studioPerformanceData.totalVolumeAmountInPeriod.toLocaleString('en-IN')}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1 font-mono flex items-center gap-1">
+                <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span>{studioPerformanceData.totalProjectsInPeriod} total projects processed</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Card 3: Fastest Turnaround Partner */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-charcoal-900/60 border border-white/5 hover:border-amber-500/30 transition-all flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-mono text-gray-400 uppercase tracking-wider">Fastest Turnaround</span>
+              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                <Zap className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <div className="text-base sm:text-lg font-bold font-display text-white truncate">
+                {studioPerformanceData.fastestStudio ? studioPerformanceData.fastestStudio.studioName : 'No Deliveries Yet'}
+              </div>
+              <p className="text-[11px] text-amber-400 mt-1 font-mono flex items-center gap-1">
+                <span>
+                  {studioPerformanceData.fastestStudio && studioPerformanceData.fastestStudio.avgTurnaroundDays !== null
+                    ? `${studioPerformanceData.fastestStudio.avgTurnaroundDays} Days Avg delivery`
+                    : 'Pending completed films'}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* Card 4: Top Work Volume Partner */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-charcoal-900/60 border border-white/5 hover:border-luxury-green-500/30 transition-all flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-mono text-gray-400 uppercase tracking-wider">Top Volume Partner</span>
+              <div className="p-2 rounded-xl bg-luxury-green-900/80 text-emerald-300">
+                <Award className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <div className="text-base sm:text-lg font-bold font-display text-white truncate">
+                {studioPerformanceData.topVolumeStudio ? studioPerformanceData.topVolumeStudio.studioName : 'No Projects'}
+              </div>
+              <p className="text-[11px] text-emerald-400 mt-1 font-mono truncate">
+                {studioPerformanceData.topVolumeStudio
+                  ? `₹${studioPerformanceData.topVolumeStudio.totalVolumeAmount.toLocaleString('en-IN')} (${studioPerformanceData.topVolumeStudio.totalProjects} films)`
+                  : 'Zero volume in period'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Visual Charts: Turnaround Days vs Work Volume */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+          {/* Chart 1: Average Turnaround Time by Studio */}
+          <div className="p-5 rounded-2xl bg-charcoal-900/50 border border-white/5 space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <h4 className="text-sm font-bold font-display text-white flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-gold-400" />
+                  <span>Average Turnaround Time per Studio</span>
+                </h4>
+                <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                  Elapsed days from shoot / intake to delivery (lower is faster)
+                </p>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-gold-500/10 text-gold-400 border border-gold-500/20">
+                Benchmark: 30d
+              </span>
+            </div>
+
+            <SafeChartContainer height={240} minHeight={200}>
+              {studioPerformanceData.turnaroundChartData.length > 0 ? (
+                <BarChart data={studioPerformanceData.turnaroundChartData} margin={{ top: 15, right: 10, left: -15, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
+                  <XAxis 
+                    dataKey="name" 
+                    stroke="#777" 
+                    fontSize={10} 
+                    fontFamily="monospace"
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                  />
+                  <YAxis 
+                    stroke="#777" 
+                    fontSize={10} 
+                    fontFamily="monospace"
+                    unit="d"
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#16181b', 
+                      borderColor: '#D4AF37', 
+                      borderRadius: '12px',
+                      color: '#fff',
+                      fontSize: '11px',
+                      fontFamily: 'monospace'
+                    }}
+                    formatter={(val: any) => [
+                      `${val} Days (${val <= 20 ? '⚡ Express' : val <= 45 ? '⏱️ Standard' : '⏳ Extended'})`,
+                      'Avg Turnaround'
+                    ]}
+                    labelFormatter={(label, items) => {
+                      const found = items?.[0]?.payload?.fullName || label;
+                      return `Studio: ${found}`;
+                    }}
+                  />
+                  <ReferenceLine y={30} stroke="#D4AF37" strokeDasharray="4 4" label={{ value: '30d Benchmark', fill: '#D4AF37', fontSize: 9, position: 'top' }} />
+                  <Bar dataKey="turnaround" radius={[6, 6, 0, 0]}>
+                    {studioPerformanceData.turnaroundChartData.map((entry, idx) => (
+                      <Cell 
+                        key={`turnaround-cell-${idx}`} 
+                        fill={entry.turnaround <= 20 ? '#10B981' : entry.turnaround <= 40 ? '#D4AF37' : '#F59E0B'} 
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-500">
+                  <Info className="w-8 h-8 mb-2 opacity-40 text-gold-400" />
+                  <p className="text-xs font-mono">No turnaround data recorded in {studioPerformanceData.activeRange.shortLabel}</p>
+                </div>
+              )}
+            </SafeChartContainer>
+          </div>
+
+          {/* Chart 2: Total Volume Processed by Studio */}
+          <div className="p-5 rounded-2xl bg-charcoal-900/50 border border-white/5 space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <h4 className="text-sm font-bold font-display text-white flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-400" />
+                  <span>Total Work Volume Processed per Studio</span>
+                </h4>
+                <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                  Gross contract value (₹ in thousands) and projects processed
+                </p>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                INR Thousands (k)
+              </span>
+            </div>
+
+            <SafeChartContainer height={240} minHeight={200}>
+              {studioPerformanceData.volumeChartData.length > 0 ? (
+                <BarChart data={studioPerformanceData.volumeChartData} margin={{ top: 15, right: 10, left: -10, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
+                  <XAxis 
+                    dataKey="name" 
+                    stroke="#777" 
+                    fontSize={10} 
+                    fontFamily="monospace"
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                  />
+                  <YAxis 
+                    stroke="#777" 
+                    fontSize={10} 
+                    fontFamily="monospace"
+                    unit="k"
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#16181b', 
+                      borderColor: '#10B981', 
+                      borderRadius: '12px',
+                      color: '#fff',
+                      fontSize: '11px',
+                      fontFamily: 'monospace'
+                    }}
+                    formatter={(val: any, name: any, item: any) => {
+                      const payload = item?.payload;
+                      return [
+                        `₹${(payload?.amount || 0).toLocaleString('en-IN')} (${payload?.projects || 0} films, ${payload?.completed || 0} delivered)`,
+                        'Gross Contract Volume'
+                      ];
+                    }}
+                    labelFormatter={(label, items) => {
+                      const found = items?.[0]?.payload?.fullName || label;
+                      return `Studio: ${found}`;
+                    }}
+                  />
+                  <Bar dataKey="amountInK" fill="#1A3A2A" stroke="#10B981" strokeWidth={1} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-500">
+                  <Info className="w-8 h-8 mb-2 opacity-40 text-emerald-400" />
+                  <p className="text-xs font-mono">No work volume processed in {studioPerformanceData.activeRange.shortLabel}</p>
+                </div>
+              )}
+            </SafeChartContainer>
+          </div>
+        </div>
+
+        {/* Detailed Studio Performance Table */}
+        <div className="space-y-3 pt-2">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+              <h4 className="text-sm font-bold font-display text-white">Studio Performance Breakdown</h4>
+              <p className="text-[11px] text-gray-400 font-mono">
+                Comparative metrics for each registered studio partner in {studioPerformanceData.activeRange.label}
+              </p>
+            </div>
+            <div className="text-[11px] font-mono text-gray-400">
+              Showing <strong className="text-gold-400">{studioPerformanceData.studios.length}</strong> studio partners
+            </div>
+          </div>
+
+          <div className="overflow-x-auto custom-scrollbar border border-white/5 rounded-2xl">
+            <table className="w-full text-left text-xs border-collapse min-w-[760px]">
+              <thead>
+                <tr className="border-b border-white/10 bg-charcoal-950/80 text-gray-400 font-mono uppercase text-[10px] tracking-wider">
+                  <th className="p-3.5">Allied Studio Partner</th>
+                  <th className="p-3.5 text-center">Work Volume Processed</th>
+                  <th className="p-3.5 text-right">Contract Volume (INR)</th>
+                  <th className="p-3.5 text-center">Avg Turnaround Time</th>
+                  <th className="p-3.5 text-center">Turnaround Span</th>
+                  <th className="p-3.5 text-right">Production Velocity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {studioPerformanceData.studios.length > 0 ? (
+                  studioPerformanceData.studios.map((studio, idx) => {
+                    const avg = studio.avgTurnaroundDays;
+                    const isExpress = avg !== null && avg <= 20;
+                    const isStandard = avg !== null && avg > 20 && avg <= 45;
+                    const isExtended = avg !== null && avg > 45;
+
+                    return (
+                      <tr 
+                        key={studio.studioId || `studio-row-${idx}`}
+                        className="hover:bg-white/[0.02] transition-colors"
+                      >
+                        {/* Studio Identity */}
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-gold-500/10 border border-gold-500/20 flex items-center justify-center text-gold-400 font-bold font-display shrink-0">
+                              {studio.studioName.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-bold text-white leading-snug flex items-center gap-1.5">
+                                <span>{studio.studioName}</span>
+                                {studio.tier && (
+                                  <span className="px-1.5 py-0.2 rounded bg-gold-500/10 border border-gold-500/20 text-gold-300 text-[9px] font-mono">
+                                    {studio.tier}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-gray-400 font-mono">
+                                {studio.ownerName ? `${studio.ownerName}${studio.city ? ` • ${studio.city}` : ''}` : (studio.city || 'Registered Partner')}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Work Volume Processed */}
+                        <td className="p-3.5 text-center">
+                          <div className="inline-flex flex-col items-center">
+                            <span className="font-bold font-mono text-white text-sm">
+                              {studio.totalProjects} {studio.totalProjects === 1 ? 'Project' : 'Projects'}
+                            </span>
+                            <span className="text-[10px] font-mono text-gray-400">
+                              {studio.completedProjects} delivered • {studio.activeProjects} active
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Contract Volume (INR) */}
+                        <td className="p-3.5 text-right font-mono">
+                          <div className="font-bold text-emerald-400 text-sm">
+                            ₹{studio.totalVolumeAmount.toLocaleString('en-IN')}
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            {studio.totalProjects > 0 
+                              ? `Avg ₹${Math.round(studio.totalVolumeAmount / studio.totalProjects).toLocaleString('en-IN')}/prj`
+                              : 'No contracts'
+                            }
+                          </div>
+                        </td>
+
+                        {/* Average Turnaround Time */}
+                        <td className="p-3.5 text-center font-mono">
+                          {avg !== null ? (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-charcoal-950 border border-white/10">
+                              <Clock className={`w-3 h-3 ${isExpress ? 'text-emerald-400' : isStandard ? 'text-gold-400' : 'text-amber-400'}`} />
+                              <span className="font-bold text-white">{avg} Days</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-500 font-mono text-xs italic">
+                              {studio.totalProjects > 0 ? 'In Pipeline' : 'No Data'}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Turnaround Span (Min - Max) */}
+                        <td className="p-3.5 text-center font-mono text-[11px] text-gray-400">
+                          {studio.minTurnaroundDays !== null && studio.maxTurnaroundDays !== null ? (
+                            <span>{studio.minTurnaroundDays}d – {studio.maxTurnaroundDays}d</span>
+                          ) : (
+                            <span className="text-gray-600">—</span>
+                          )}
+                        </td>
+
+                        {/* Production Velocity Badge */}
+                        <td className="p-3.5 text-right">
+                          {avg !== null ? (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold ${
+                              isExpress
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                : isStandard
+                                ? 'bg-gold-500/10 text-gold-400 border border-gold-500/30'
+                                : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                            }`}>
+                              {isExpress && <Zap className="w-3 h-3" />}
+                              {isStandard && <CheckCircle2 className="w-3 h-3" />}
+                              {isExtended && <Timer className="w-3 h-3" />}
+                              {isExpress ? 'Express Velocity' : isStandard ? 'Standard Lead' : 'Extended Cycle'}
+                            </span>
+                          ) : studio.totalProjects > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                              <Activity className="w-3 h-3" />
+                              Active Flow
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-mono bg-gray-500/10 text-gray-400 border border-gray-500/20">
+                              Idle Pipeline
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-gray-400 font-mono text-xs">
+                      No allied studio records found in the database.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Quarter switch hint if empty in selected quarter */}
+          {studioPerformanceData.totalProjectsInPeriod === 0 && (
+            <div className="p-4 rounded-xl bg-gold-500/5 border border-gold-500/20 text-xs font-mono text-gold-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-gold-400 shrink-0" />
+                <span>No project records strictly fall in {studioPerformanceData.activeRange.shortLabel}.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setStudioQuarter('current_quarter')}
+                  className="px-2.5 py-1 rounded bg-gold-500/20 hover:bg-gold-500/30 text-gold-200 text-[11px] font-bold transition-all"
+                >
+                  View Current Qtr (Q2)
+                </button>
+                <button
+                  onClick={() => setStudioQuarter('all_time')}
+                  className="px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-white text-[11px] transition-all"
+                >
+                  View All-Time
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Interactive Charts block */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

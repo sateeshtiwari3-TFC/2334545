@@ -18,7 +18,9 @@ import {
   LayoutGrid,
   Columns,
   Layers,
-  ChevronDown
+  ChevronDown,
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Project, Studio, Editor, Revision, UserRole, ProjectStatus } from '../../types';
@@ -35,6 +37,7 @@ interface ProjectKanbanBoardProps {
   onOpenQuickNote: (proj: Project) => void;
   onOpenWhatsAppShare: (proj: Project) => void;
   onUpdateStatus: (projectId: string, status: ProjectStatus) => Promise<void>;
+  onResetProject?: (proj: Project, e: React.MouseEvent) => void;
   setHoveredPhoto: (photo: { url: string; title: string; subtitle: string } | null) => void;
 }
 
@@ -109,6 +112,7 @@ export const ProjectKanbanBoard: React.FC<ProjectKanbanBoardProps> = ({
   onOpenQuickNote,
   onOpenWhatsAppShare,
   onUpdateStatus,
+  onResetProject,
   setHoveredPhoto
 }) => {
   // Mode: Compact 3-stage core workflow vs 8-stage full pipeline
@@ -371,7 +375,11 @@ export const ProjectKanbanBoard: React.FC<ProjectKanbanBoardProps> = ({
                         initial={{ opacity: 0, scale: 0.96 }}
                         animate={{ opacity: isBeingDragged ? 0.4 : 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.96 }}
-                        transition={{ duration: 0.18 }}
+                        transition={{
+                          layout: { type: "spring", stiffness: 350, damping: 30 },
+                          opacity: { duration: 0.18 },
+                          scale: { duration: 0.18 }
+                        }}
                         draggable={true}
                         onDragStart={(e) => handleDragStart(e, proj)}
                         onDragEnd={handleDragEnd}
@@ -513,7 +521,7 @@ export const ProjectKanbanBoard: React.FC<ProjectKanbanBoardProps> = ({
                             )}
                           </div>
 
-                          {/* Quick Edit & WhatsApp Icons */}
+                          {/* Quick Actions: WhatsApp, Note, Edit, Reset, Delete */}
                           <div className="flex items-center gap-0.5">
                             <button
                               type="button"
@@ -539,10 +547,37 @@ export const ProjectKanbanBoard: React.FC<ProjectKanbanBoardProps> = ({
                               type="button"
                               onClick={(e) => onEditProject(proj, e)}
                               className="p-1 rounded text-gray-400 hover:text-gold-400 hover:bg-gold-500/10 transition-colors cursor-pointer"
-                              title="Edit"
+                              title="Edit Project"
                             >
                               <Edit className="w-3 h-3" />
                             </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onResetProject) {
+                                  onResetProject(proj, e);
+                                } else {
+                                  onUpdateStatus(proj.id, 'data_received');
+                                }
+                              }}
+                              className="p-1 rounded text-gray-400 hover:text-sky-400 hover:bg-sky-500/10 transition-colors cursor-pointer"
+                              title="Reset Stage to Data Received"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                            </button>
+
+                            {(userRole === 'admin' || userRole === 'editor') && (
+                              <button
+                                type="button"
+                                onClick={(e) => onDeleteProject(proj.id, e)}
+                                className="p-1 rounded text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                title="Delete Film (Move to Recycle Bin)"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
 
                         </div>

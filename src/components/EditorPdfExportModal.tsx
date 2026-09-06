@@ -737,8 +737,8 @@ export const EditorPdfExportModal: React.FC<EditorPdfExportModalProps> = ({
                   <span className="text-[11px] text-slate-500 font-mono">Top Projects Delivered</span>
                 </div>
 
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-xs border-collapse">
+                <div className="border border-slate-200 rounded-xl overflow-x-auto custom-scrollbar">
+                  <table className="w-full min-w-[620px] text-left text-xs border-collapse">
                     <thead>
                       <tr className="bg-slate-100 border-b border-slate-200 font-mono text-[10px] text-slate-600 uppercase">
                         <th className="p-3">Project / Couple</th>
@@ -912,8 +912,8 @@ export const EditorPdfExportModal: React.FC<EditorPdfExportModalProps> = ({
               </div>
 
               {/* Invoice Breakdown Table */}
-              <div className="mb-8">
-                <table className="w-full text-left text-xs border-collapse">
+              <div className="mb-8 overflow-x-auto custom-scrollbar">
+                <table className="w-full min-w-[620px] text-left text-xs border-collapse">
                   <thead>
                     <tr className={`border-b font-mono text-[10px] uppercase ${
                       invoiceTheme === 'dark_minimal'

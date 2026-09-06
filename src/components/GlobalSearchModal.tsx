@@ -73,7 +73,9 @@ const APP_NAVIGATION_ITEMS = [
   { id: 'editors', label: 'Editors Portal', icon: Laptop, category: 'Navigation', desc: 'Video editors, capacity tracker & pay records' },
   { id: 'datamanager', label: 'Data Manager & Hard Drives', icon: HardDrive, category: 'Navigation', desc: 'Physical storage disks, storage codes & cloud links' },
   { id: 'calendar', label: 'Studio Calendar', icon: Calendar, category: 'Navigation', desc: 'Event timelines, shoot schedules & delivery dates' },
-  { id: 'gemini', label: 'Gemini AI Assistant', icon: Sparkles, category: 'Navigation', desc: 'AI film descriptions, summaries & wedding scripts' },
+  { id: 'gemini', label: 'Gemini AI Studio Assistant', icon: Sparkles, category: 'Navigation', desc: 'AI film descriptions, summaries & wedding scripts' },
+  { id: 'gemini:soundtrack', label: 'AI Wedding Soundtrack Suggester', icon: Sparkles, category: 'AI Creative', desc: 'Curate trending background songs & audio by wedding style' },
+  { id: 'gemini:captions', label: 'AI Reels & YouTube Caption Generator', icon: Sparkles, category: 'AI Creative', desc: '1-Click viral hooks, captions, hashtags & descriptions' },
   { id: 'audit', label: 'Audit & Revision Log', icon: History, category: 'Navigation', desc: 'Historical change log, editor reassignments & edits' },
   { id: 'reports', label: 'Reports & Audits', icon: BarChart3, category: 'Navigation', desc: 'Financial summaries, expenses & profitability insights' },
   { id: 'notifications', label: 'Notifications Center', icon: Bell, category: 'Navigation', desc: 'Deadline warnings & automated system reminders' },
@@ -331,7 +333,13 @@ export default function GlobalSearchModal({
     } else if (item.type === 'editor') {
       onNavigateToEditor(item.data as Editor);
     } else if (item.type === 'navigation') {
-      onNavigateToTab(item.data.id);
+      if (item.data.id === 'gemini:soundtrack') {
+        onNavigateToTab('gemini', 'soundtrack');
+      } else if (item.data.id === 'gemini:captions') {
+        onNavigateToTab('gemini', 'captions');
+      } else {
+        onNavigateToTab(item.data.id);
+      }
     }
   };
 

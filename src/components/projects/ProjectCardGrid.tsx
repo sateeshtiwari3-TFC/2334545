@@ -20,7 +20,8 @@ import {
   Building2,
   Layers,
   ChevronRight,
-  FolderOpen
+  FolderOpen,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Project, Studio, Editor, Revision, UserRole, ProjectStatus } from '../../types';
@@ -43,6 +44,7 @@ interface ProjectCardGridProps {
   onOpenQuickPrintInvoice: (proj: Project) => void;
   onToggleTag: (projectId: string, tagId: string, e: React.MouseEvent) => void;
   onUpdateStatus: (projectId: string, status: ProjectStatus) => Promise<void>;
+  onResetProject?: (proj: Project, e: React.MouseEvent) => void;
   setHoveredPhoto: (photo: { url: string; title: string; subtitle: string } | null) => void;
 }
 
@@ -74,6 +76,7 @@ export const ProjectCardGrid: React.FC<ProjectCardGridProps> = ({
   onOpenQuickPrintInvoice,
   onToggleTag,
   onUpdateStatus,
+  onResetProject,
   setHoveredPhoto
 }) => {
   if (projects.length === 0) {
@@ -134,7 +137,7 @@ export const ProjectCardGrid: React.FC<ProjectCardGridProps> = ({
             >
               <SwipeableCard
                 id={proj.id}
-                layout
+                layout={false}
                 onSwipeLeft={(userRole === 'admin' || userRole === 'editor') ? () => onDeleteProject(proj.id, { stopPropagation: () => {} } as any) : undefined}
                 onSwipeRight={async () => {
                   await onUpdateStatus(proj.id, 'closed');
@@ -387,6 +390,22 @@ export const ProjectCardGrid: React.FC<ProjectCardGridProps> = ({
                       title="Edit Project Specifications"
                     >
                       <Edit className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onResetProject) {
+                          onResetProject(proj, e);
+                        } else {
+                          onUpdateStatus(proj.id, 'data_received');
+                        }
+                      }}
+                      className="p-2 rounded-xl bg-charcoal-900 hover:bg-sky-500/20 text-gray-400 hover:text-sky-400 border border-white/5 hover:border-sky-500/30 transition-all cursor-pointer"
+                      title="Reset Stage to Data Received"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
                     </button>
 
                     <button

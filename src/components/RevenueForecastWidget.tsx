@@ -758,7 +758,7 @@ export default function RevenueForecastWidget({
           </div>
 
           {/* Search box within upcoming list */}
-          <div className="relative min-w-[220px]">
+          <div className="relative w-full sm:w-auto sm:min-w-[220px]">
             <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -771,8 +771,8 @@ export default function RevenueForecastWidget({
         </div>
 
         {displayedProjects.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs font-mono">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full min-w-[760px] text-left text-xs font-mono">
               <thead>
                 <tr className="border-b border-white/10 text-[10px] text-gray-400 uppercase tracking-wider">
                   <th className="py-2.5 px-3">Shoot Date</th>

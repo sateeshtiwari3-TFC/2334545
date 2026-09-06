@@ -95,6 +95,8 @@ export default function App() {
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [subActionTrigger, setSubActionTrigger] = useState<string>('');
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState<boolean>(false);
+  const [geminiInitialMode, setGeminiInitialMode] = useState<"chat" | "soundtrack" | "captions">("soundtrack");
+  const [geminiPreselectedProjectId, setGeminiPreselectedProjectId] = useState<string>("");
 
   const lastCheckedSignatureRef = React.useRef<string>('');
 
@@ -822,18 +824,26 @@ export default function App() {
 
   // Editors CRUD
   const handleAddEditor = async (editor: Omit<Editor, 'id'>) => {
+    let sanitizedEditor = { ...editor };
+    if (sanitizedEditor.photo && sanitizedEditor.photo.startsWith('data:image/')) {
+      sanitizedEditor.photo = await compressImage(sanitizedEditor.photo, 800, 1000, 0.82);
+    }
     const generatedId = `editor-${editor.name.toLowerCase().replace(/\s+/g, '-')}`;
     const docRef = doc(db, 'editors', generatedId);
     await setDoc(docRef, {
-      ...cleanUndefined(editor),
+      ...cleanUndefined(sanitizedEditor),
       id: generatedId,
       createdAt: serverTimestamp()
     });
   };
 
   const handleUpdateEditor = async (id: string, updates: Partial<Editor>) => {
+    let sanitizedUpdates = { ...updates };
+    if (sanitizedUpdates.photo && sanitizedUpdates.photo.startsWith('data:image/')) {
+      sanitizedUpdates.photo = await compressImage(sanitizedUpdates.photo, 800, 1000, 0.82);
+    }
     const docRef = doc(db, 'editors', id);
-    await setDoc(docRef, cleanUndefined(updates), { merge: true });
+    await setDoc(docRef, cleanUndefined(sanitizedUpdates), { merge: true });
   };
 
   const handleDeleteEditor = async (id: string) => {
@@ -1274,11 +1284,24 @@ export default function App() {
       setActiveTab('registry');
       return;
     }
+    if (tab === 'gemini') {
+      if (subAction === 'soundtrack' || subAction === 'captions' || subAction === 'chat') {
+        setGeminiInitialMode(subAction);
+      }
+    }
     setActiveTab(tab);
     if (subAction) {
       setSubActionTrigger(subAction);
       setTimeout(() => setSubActionTrigger(''), 500); // clear
     }
+  };
+
+  const handleOpenGeminiCreativeTool = (mode: "chat" | "soundtrack" | "captions", projectId?: string) => {
+    setGeminiInitialMode(mode);
+    if (projectId) {
+      setGeminiPreselectedProjectId(projectId);
+    }
+    setActiveTab('gemini');
   };
 
   // Global Search Navigation Handlers
@@ -1366,6 +1389,7 @@ export default function App() {
             onDeleteRevision={handleDeleteRevision}
             onRedirectToRegistry={() => setActiveTab('registry')}
             initialTriggerAction={subActionTrigger}
+            onOpenCreativeTool={handleOpenGeminiCreativeTool}
           />
         );
       case 'registry':
@@ -1422,6 +1446,8 @@ export default function App() {
             expenses={expenses}
             calendarEvents={calendarEvents}
             currentUser={currentUser}
+            initialMode={geminiInitialMode}
+            preselectedProjectId={geminiPreselectedProjectId}
           />
         );
       case 'dashboard':

@@ -308,8 +308,8 @@ ${projectRevisions.map(r => `• REV-#${r.revisionNumber} (${r.date}): ${r.notes
                 </span>
               </div>
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <table className="w-full text-left border-collapse text-xs">
+              <div className="border border-slate-200 rounded-xl overflow-x-auto custom-scrollbar shadow-sm">
+                <table className="w-full min-w-[540px] text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-mono text-[10px] uppercase">
                       <th className="p-3 font-bold">Milestone Stage</th>

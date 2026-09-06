@@ -22,7 +22,10 @@ import {
   ShieldCheck,
   Percent,
   History,
-  Tag as TagIcon
+  Tag as TagIcon,
+  Music,
+  Share2,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Project, Studio, Editor, Revision, UserRole, ProjectStatus, CalendarEvent } from '../../types';
@@ -48,6 +51,8 @@ interface ProjectDetailDrawerProps {
   onOpenWhatsAppShare: (project: Project) => void;
   onOpenQuickNote: (project: Project) => void;
   onToggleTag: (projectId: string, tagId: string, e: React.MouseEvent) => void;
+  onOpenCreativeTool?: (mode: "soundtrack" | "captions", projectId: string) => void;
+  onResetProject?: (project: Project) => void;
 }
 
 const WORKFLOW_STAGES: { id: ProjectStatus; label: string; color: string; bg: string }[] = [
@@ -82,7 +87,9 @@ export const ProjectDetailDrawer: React.FC<ProjectDetailDrawerProps> = ({
   onOpenPdfExport,
   onOpenWhatsAppShare,
   onOpenQuickNote,
-  onToggleTag
+  onToggleTag,
+  onOpenCreativeTool,
+  onResetProject
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'financials' | 'storage' | 'revisions' | 'notes'>('overview');
   const [newRevisionNote, setNewRevisionNote] = useState('');
@@ -265,6 +272,51 @@ export const ProjectDetailDrawer: React.FC<ProjectDetailDrawerProps> = ({
                       <option key={s.id} value={s.id}>{s.label}</option>
                     ))}
                   </select>
+                </div>
+
+                {/* AI Wedding Creative Assistance */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-charcoal-950 via-luxury-green-950/40 to-charcoal-950 border border-gold-500/20 space-y-2.5 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Sparkles className="w-4 h-4 text-gold-400" />
+                      <span className="text-xs font-bold text-white uppercase tracking-wider font-display">
+                        AI Wedding Creative Tools
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-gold-400/80 bg-gold-500/10 px-2 py-0.5 rounded-full border border-gold-500/20">
+                      Gemini 3.8 Flash
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Generate curated music soundtracks matching this couple's wedding aesthetic, or 1-click generate viral Instagram Reels captions, hooks, and YouTube descriptions.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenCreativeTool?.('soundtrack', project.id);
+                      }}
+                      className="py-2.5 px-3 rounded-xl bg-charcoal-900 border border-luxury-green-800/30 hover:border-gold-500 text-gold-400 hover:text-gold-300 text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-sm group"
+                    >
+                      <Music className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                      <span>Suggest Soundtracks</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenCreativeTool?.('captions', project.id);
+                      }}
+                      className="py-2.5 px-3 rounded-xl bg-charcoal-900 border border-luxury-green-800/30 hover:border-gold-500 text-gold-400 hover:text-gold-300 text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-sm group"
+                    >
+                      <Share2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                      <span>Reels & Captions</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Delivery Deadline & Countdown */}
@@ -566,6 +618,22 @@ export const ProjectDetailDrawer: React.FC<ProjectDetailDrawerProps> = ({
               >
                 <FileDown className="w-4 h-4" />
                 <span>Export PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (onResetProject) {
+                    onResetProject(project);
+                  } else {
+                    onUpdateProject(project.id, { status: 'data_received' });
+                  }
+                }}
+                className="px-4 py-2.5 rounded-xl bg-charcoal-900 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 text-xs font-bold font-mono flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Reset Workflow Stage to Data Received"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Reset Stage</span>
               </button>
             </div>
 

@@ -346,3 +346,39 @@ export interface RecycleBinItem {
   deletedByEmail?: string;
 }
 
+export interface SoundtrackRecommendation {
+  segment: string;
+  songTitle: string;
+  artist: string;
+  genre: string;
+  tempoBpm: string;
+  mood: string;
+  whyItFits: string;
+  editingTip: string;
+  searchQuery: string;
+}
+
+export interface WeddingSoundtrackResult {
+  weddingThemeVibe: string;
+  colorPaletteSuggestion?: string;
+  soundtracks: SoundtrackRecommendation[];
+  mixingTips: string[];
+}
+
+export interface WeddingCaptionResult {
+  instagramReels: {
+    hookLine: string;
+    caption: string;
+    hashtags: string[];
+    callToAction: string;
+  }[];
+  youtube: {
+    titleOptions: string[];
+    description: string;
+    chapterTemplate: string;
+    tags: string[];
+  };
+  whatsappStatusBlurb: string;
+  storyPostText: string;
+}
+

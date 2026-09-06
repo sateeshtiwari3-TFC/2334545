@@ -9,7 +9,8 @@ import {
   FolderKanban, 
   Calendar, 
   CheckCircle2, 
-  AlertTriangle 
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { PaymentHistory, Project, Studio, Editor } from '../../types';
@@ -91,6 +92,37 @@ export default function PaymentRecordModal({
     setFormError('');
     setFormSuccess('');
   }, [editingPayment, initialType, initialProjectId, initialStudioId, initialEditorId, isOpen, studios, editors, projects]);
+
+  const handleResetForm = () => {
+    if (editingPayment) {
+      setPaymentType(editingPayment.entityType);
+      if (editingPayment.entityType === 'studio') {
+        setSelectedStudioId(editingPayment.entityId);
+      } else {
+        setSelectedEditorId(editingPayment.entityId);
+      }
+      setSelectedProjectId(editingPayment.projectId || '');
+      setAmount(editingPayment.amount);
+      setDate(editingPayment.date || new Date().toISOString().split('T')[0]);
+      setPaymentMethod(editingPayment.paymentMethod || 'UPI');
+      setNotes(editingPayment.notes || '');
+      setReceivedFrom(editingPayment.receivedFrom || '');
+    } else {
+      setPaymentType(initialType);
+      const targetProj = projects.find(p => p.id === initialProjectId);
+      const defaultStudio = initialStudioId || (targetProj ? (targetProj.studioId || studios.find(s => s.name.toLowerCase() === targetProj.studioName?.toLowerCase())?.id || studios[0]?.id || '') : (studios[0]?.id || ''));
+      setSelectedStudioId(defaultStudio);
+      setSelectedEditorId(initialEditorId || editors[0]?.id || '');
+      setSelectedProjectId(initialProjectId);
+      setAmount('');
+      setDate(new Date().toISOString().split('T')[0]);
+      setPaymentMethod('UPI');
+      setNotes('');
+      setReceivedFrom('');
+    }
+    setFormError('');
+    setFormSuccess('');
+  };
 
   if (!isOpen) return null;
 
@@ -444,14 +476,25 @@ export default function PaymentRecordModal({
           </div>
 
           {/* Submit Buttons */}
-          <div className="pt-2 flex justify-end gap-3 border-t border-white/10">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 bg-charcoal-800 text-gray-300 text-xs font-medium rounded-2xl hover:bg-charcoal-700 cursor-pointer"
-            >
-              Cancel
-            </button>
+          <div className="pt-2 flex justify-between items-center border-t border-white/10">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 bg-charcoal-800 text-gray-300 text-xs font-medium rounded-2xl hover:bg-charcoal-700 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleResetForm}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-charcoal-900 hover:bg-sky-500/20 text-gray-400 hover:text-sky-300 border border-white/10 hover:border-sky-500/30 rounded-2xl text-xs font-mono transition-all cursor-pointer"
+                title="Reset form inputs"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Form</span>
+              </button>
+            </div>
             <button
               type="submit"
               disabled={isSubmitting}

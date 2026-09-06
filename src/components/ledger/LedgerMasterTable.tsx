@@ -25,7 +25,8 @@ import {
   Clock,
   MessageCircle,
   Sparkles,
-  Send
+  Send,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PaymentHistory, Project, Studio, Editor } from '../../types';
@@ -614,10 +615,13 @@ export default function LedgerMasterTable({
 
             {hasActiveFilters && (
               <button
+                type="button"
                 onClick={clearAllFilters}
-                className="text-[11px] font-mono text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-charcoal-900 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-xs font-mono transition-all cursor-pointer shadow-sm shrink-0"
+                title="Reset all ledger search and filter controls"
               >
-                Reset Filters
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset Filters</span>
               </button>
             )}
           </div>

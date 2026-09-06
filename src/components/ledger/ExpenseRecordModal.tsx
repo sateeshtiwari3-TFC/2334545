@@ -17,7 +17,8 @@ import {
   Coffee,
   HelpCircle,
   TrendingUp,
-  Check
+  Check,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Expense } from '../../types';
@@ -80,6 +81,18 @@ export default function ExpenseRecordModal({
       console.warn('Could not initialize firestore listener for expenses in modal:', e);
     }
   }, [isOpen, expenses]);
+
+  const handleResetForm = () => {
+    setTitle('');
+    setCategory('Operating Cost');
+    setAmount('');
+    setPayee('');
+    setDate(new Date().toISOString().split('T')[0]);
+    setPaymentMode('UPI');
+    setNotes('');
+    setFormError('');
+    setFormSuccess('');
+  };
 
   const activeExpensesList = (expenses && expenses.length > 0) ? expenses : internalExpenses;
 
@@ -486,14 +499,25 @@ export default function ExpenseRecordModal({
           </div>
 
           {/* Submit & Cancel Buttons */}
-          <div className="pt-2 flex justify-end gap-3 border-t border-white/10">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 bg-charcoal-800 text-gray-300 text-xs font-medium rounded-2xl hover:bg-charcoal-700 cursor-pointer transition-colors"
-            >
-              Cancel
-            </button>
+          <div className="pt-2 flex justify-between items-center border-t border-white/10">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 bg-charcoal-800 text-gray-300 text-xs font-medium rounded-2xl hover:bg-charcoal-700 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleResetForm}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-charcoal-900 hover:bg-sky-500/20 text-gray-400 hover:text-sky-300 border border-white/10 hover:border-sky-500/30 rounded-2xl text-xs font-mono transition-all cursor-pointer"
+                title="Reset form fields"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Form</span>
+              </button>
+            </div>
             <button
               type="submit"
               disabled={isSubmitting}

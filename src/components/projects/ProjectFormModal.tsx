@@ -14,7 +14,8 @@ import {
   Film,
   Tag as TagIcon,
   CheckCircle2,
-  Info
+  Info,
+  RotateCcw
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Project, Studio, Editor, ProjectStatus, ProjectPriority, UserRole } from '../../types';
@@ -87,16 +88,24 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   const [firstEditorShare, setFirstEditorShare] = useState<number | ''>('');
   const [secondEditorShare, setSecondEditorShare] = useState<number | ''>('');
 
+  const [formResetNotice, setFormResetNotice] = useState<string | null>(null);
+
   useEffect(() => {
     if (editingProject) {
-      setProjectName(editingProject.projectName || '');
+      const projectTitle = editingProject.projectName || editingProject.coupleName || '';
+      setProjectName(projectTitle);
       const parts = (editingProject.coupleName || '').split('&').map(s => s.trim());
-      setGroomName(parts[0] || '');
-      setBrideName(parts[1] || '');
-      setCouplePhoto(editingProject.couplePhoto || '');
+      setGroomName(editingProject.groomName || parts[0] || (projectTitle.includes('&') ? projectTitle.split('&')[0]?.trim() : '') || '');
+      setBrideName(editingProject.brideName || parts[1] || (projectTitle.includes('&') ? projectTitle.split('&')[1]?.trim() : '') || '');
+      setCouplePhoto(editingProject.couplePhoto || DEFAULT_COVERS[0].url);
       setEventType(editingProject.eventType || 'Wedding Film');
-      setStudioId(editingProject.studioId || '');
-      setAssignedEditorId(editingProject.assignedEditorId || '');
+
+      const matchedStudio = studios.find(s => s.id === editingProject.studioId || s.name === editingProject.studioName);
+      setStudioId(matchedStudio ? matchedStudio.id : (editingProject.studioId || currentStudioId || (studios[0]?.id || '')));
+
+      const matchedEditor = editors.find(e => e.id === editingProject.assignedEditorId || e.name === editingProject.assignedEditorName);
+      setAssignedEditorId(matchedEditor ? matchedEditor.id : (editingProject.assignedEditorId || (editors[0]?.id || '')));
+
       setShootDate(editingProject.shootDate || '');
       setDeliveryDate(editingProject.deliveryDate || '');
       setStatus(editingProject.status || 'data_received');
@@ -109,7 +118,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       setCloudDriveLink(editingProject.cloudDriveLink || '');
       setNotes(editingProject.notes || '');
       setSelectedTags(editingProject.tags || []);
-      setSelectedDeliverables(editingProject.selectedFunctions || [STANDARD_DELIVERABLES[0], STANDARD_DELIVERABLES[1]]);
+      setSelectedDeliverables(editingProject.selectedFunctions && editingProject.selectedFunctions.length > 0 ? editingProject.selectedFunctions : [STANDARD_DELIVERABLES[0], STANDARD_DELIVERABLES[1]]);
       setIsSplitProject(!!editingProject.isSplitProject);
       setSecondEditorId(editingProject.secondEditorId || '');
       setFirstEditorShare(editingProject.firstEditorShare ?? '');
@@ -143,9 +152,76 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       setSecondEditorShare('');
     }
     setValidationError('');
+    setFormResetNotice(null);
   }, [editingProject, isOpen, studios, editors, currentStudioId]);
 
   if (!isOpen) return null;
+
+  const handleResetForm = () => {
+    if (editingProject) {
+      const projectTitle = editingProject.projectName || editingProject.coupleName || '';
+      setProjectName(projectTitle);
+      const parts = (editingProject.coupleName || '').split('&').map(s => s.trim());
+      setGroomName(editingProject.groomName || parts[0] || (projectTitle.includes('&') ? projectTitle.split('&')[0]?.trim() : '') || '');
+      setBrideName(editingProject.brideName || parts[1] || (projectTitle.includes('&') ? projectTitle.split('&')[1]?.trim() : '') || '');
+      setCouplePhoto(editingProject.couplePhoto || DEFAULT_COVERS[0].url);
+      setEventType(editingProject.eventType || 'Wedding Film');
+
+      const matchedStudio = studios.find(s => s.id === editingProject.studioId || s.name === editingProject.studioName);
+      setStudioId(matchedStudio ? matchedStudio.id : (editingProject.studioId || currentStudioId || (studios[0]?.id || '')));
+
+      const matchedEditor = editors.find(e => e.id === editingProject.assignedEditorId || e.name === editingProject.assignedEditorName);
+      setAssignedEditorId(matchedEditor ? matchedEditor.id : (editingProject.assignedEditorId || (editors[0]?.id || '')));
+
+      setShootDate(editingProject.shootDate || '');
+      setDeliveryDate(editingProject.deliveryDate || '');
+      setStatus(editingProject.status || 'data_received');
+      setPriority(editingProject.priority || 'medium');
+      setProjectAmount(editingProject.projectAmount ?? '');
+      setAdvancePayment(editingProject.advancePayment ?? '');
+      setEditorPayment(editingProject.editorPayment ?? '');
+      setHardDriveNumber(editingProject.hardDriveNumber || '');
+      setBackupDriveNumber(editingProject.backupDriveNumber || '');
+      setCloudDriveLink(editingProject.cloudDriveLink || '');
+      setNotes(editingProject.notes || '');
+      setSelectedTags(editingProject.tags || []);
+      setSelectedDeliverables(editingProject.selectedFunctions && editingProject.selectedFunctions.length > 0 ? editingProject.selectedFunctions : [STANDARD_DELIVERABLES[0], STANDARD_DELIVERABLES[1]]);
+      setIsSplitProject(!!editingProject.isSplitProject);
+      setSecondEditorId(editingProject.secondEditorId || '');
+      setFirstEditorShare(editingProject.firstEditorShare ?? '');
+      setSecondEditorShare(editingProject.secondEditorShare ?? '');
+    } else {
+      setProjectName('');
+      setGroomName('');
+      setBrideName('');
+      setCouplePhoto(DEFAULT_COVERS[0].url);
+      setEventType('Wedding Film');
+      setStudioId(currentStudioId || (studios[0]?.id || ''));
+      setAssignedEditorId(editors[0]?.id || '');
+      const todayStr = new Date().toISOString().split('T')[0];
+      setShootDate(todayStr);
+      const deliveryDefault = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0];
+      setDeliveryDate(deliveryDefault);
+      setStatus('data_received');
+      setPriority('medium');
+      setProjectAmount(45000);
+      setAdvancePayment(15000);
+      setEditorPayment(12000);
+      setHardDriveNumber('HDD-01');
+      setBackupDriveNumber('BACKUP-01');
+      setCloudDriveLink('');
+      setNotes('');
+      setSelectedTags(['teaser', '4k_master']);
+      setSelectedDeliverables([STANDARD_DELIVERABLES[0], STANDARD_DELIVERABLES[1]]);
+      setIsSplitProject(false);
+      setSecondEditorId('');
+      setFirstEditorShare('');
+      setSecondEditorShare('');
+    }
+    setValidationError('');
+    setFormResetNotice(editingProject ? 'Form restored to saved project values.' : 'Form fields reset to defaults.');
+    setTimeout(() => setFormResetNotice(null), 3000);
+  };
 
   const handlePresetDeadline = (days: number) => {
     const base = shootDate ? new Date(shootDate) : new Date();
@@ -169,27 +245,32 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectName.trim()) {
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    e?.preventDefault?.();
+    const effectiveProjectName = projectName.trim() || (editingProject?.projectName || editingProject?.coupleName || (groomName && brideName ? `${groomName} & ${brideName}` : ''));
+    if (!effectiveProjectName) {
       setValidationError('Please specify a Project Name.');
       return;
     }
-    if (!groomName.trim() && !brideName.trim()) {
-      setValidationError('Please specify at least Groom or Bride name.');
-      return;
+
+    let effectiveStudioId = studioId;
+    if (!effectiveStudioId && studios.length > 0) {
+      effectiveStudioId = currentStudioId || studios[0].id;
+      setStudioId(effectiveStudioId);
     }
-    if (!studioId) {
+    if (!effectiveStudioId) {
       setValidationError('Please select a Studio Partner.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const selectedStudio = studios.find(s => s.id === studioId);
+      const selectedStudio = studios.find(s => s.id === effectiveStudioId);
       const selectedLeadEditor = editors.find(e => e.id === assignedEditorId);
       const selectedSecondEditor = editors.find(e => e.id === secondEditorId);
-      const coupleFormatted = `${groomName.trim() || 'Groom'} & ${brideName.trim() || 'Bride'}`;
+      const coupleFormatted = (groomName.trim() || brideName.trim()) 
+        ? `${groomName.trim() || 'Groom'} & ${brideName.trim() || 'Bride'}`
+        : effectiveProjectName;
 
       const amountNum = Number(projectAmount) || 0;
       const advanceNum = Number(advancePayment) || 0;
@@ -197,16 +278,16 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
 
       const dataToSave: Omit<Project, 'createdAt' | 'updatedAt'> = {
         id: editingProject ? editingProject.id : `PRJ-${Date.now().toString().slice(-4)}`,
-        projectName: projectName.trim(),
+        projectName: effectiveProjectName,
         coupleName: coupleFormatted,
         groomName: groomName.trim(),
         brideName: brideName.trim(),
         couplePhoto: couplePhoto || DEFAULT_COVERS[0].url,
         eventType,
-        studioId,
+        studioId: effectiveStudioId,
         studioName: selectedStudio?.name || 'Partner Studio',
-        assignedEditorId,
-        assignedEditorName: selectedLeadEditor?.name || 'Unassigned',
+        assignedEditorId: assignedEditorId || (editors[0]?.id || ''),
+        assignedEditorName: selectedLeadEditor?.name || editors[0]?.name || 'Unassigned',
         shootDate,
         deliveryDate,
         status,
@@ -350,6 +431,14 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-300 text-xs font-mono flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-red-400" />
                   <span>{validationError}</span>
+                </div>
+              )}
+
+              {/* Reset Success Notice */}
+              {formResetNotice && (
+                <div className="mt-3 p-3 bg-sky-500/10 border border-sky-500/30 rounded-xl text-sky-300 text-xs font-mono flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-sky-400" />
+                  <span>{formResetNotice}</span>
                 </div>
               )}
 
@@ -671,13 +760,24 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
 
             {/* Footer Form Controls */}
             <div className="pt-4 border-t border-white/10 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl bg-charcoal-950 text-gray-400 hover:text-white text-xs font-bold font-mono transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-xl bg-charcoal-950 text-gray-400 hover:text-white text-xs font-bold font-mono transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetForm}
+                  className="px-3.5 py-2 rounded-xl bg-charcoal-900 hover:bg-sky-500/20 text-gray-400 hover:text-sky-300 border border-white/5 hover:border-sky-500/30 text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Reset form fields"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Form</span>
+                </button>
+              </div>
 
               <button
                 type="button"

@@ -1148,8 +1148,8 @@ Thank you for choosing The Frame Cut Studio! 🙏`;
                   </span>
                 </div>
 
-                <div className="border border-slate-900 rounded-xl overflow-hidden shadow-xs">
-                  <table className="w-full text-left text-xs">
+                <div className="border border-slate-900 rounded-xl overflow-x-auto custom-scrollbar shadow-xs">
+                  <table className="w-full min-w-[500px] text-left text-xs">
                     <thead className="bg-[#0b1320] text-white font-mono text-[10px] uppercase">
                       <tr>
                         <th className="py-3 px-4">PROJECT / EVENT NAME</th>
@@ -1185,7 +1185,8 @@ Thank you for choosing The Frame Cut Studio! 🙏`;
                   </div>
 
                   {/* Table Container */}
-                  <div className="rounded-xl border border-[#062c22]/30 overflow-hidden shadow-xs">
+                  <div className="rounded-xl border border-[#062c22]/30 overflow-x-auto custom-scrollbar shadow-xs">
+                    <div className="min-w-[540px]">
                     {/* Dark Green Table Header */}
                     <div className="grid grid-cols-[100px_1fr_180px_110px] sm:grid-cols-[120px_1fr_210px_130px] px-4 sm:px-5 py-3 bg-[#062c22] text-white font-bold text-xs uppercase tracking-wider">
                       <span>DATE</span>
@@ -1285,6 +1286,7 @@ Thank you for choosing The Frame Cut Studio! 🙏`;
                           -₹{advancePaid.toLocaleString('en-IN')}
                         </span>
                       </div>
+                    </div>
                     </div>
                   </div>
                 </div>

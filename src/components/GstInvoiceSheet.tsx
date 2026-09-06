@@ -426,7 +426,8 @@ export default function GstInvoiceSheet({
             </span>
           </div>
 
-          <div className="rounded-2xl border border-slate-800/80 overflow-hidden shadow-sm">
+          <div className="rounded-2xl border border-slate-800/80 overflow-x-auto custom-scrollbar shadow-sm">
+            <div className="min-w-[520px]">
             <div
               className={`print-table-header px-4 sm:px-5 py-3 grid grid-cols-[1fr_70px_110px_110px] sm:grid-cols-[1fr_80px_120px_120px] items-center font-extrabold text-[11px] uppercase tracking-wider ${
                 isDark
@@ -479,6 +480,7 @@ export default function GstInvoiceSheet({
                 ))
               )}
             </div>
+            </div>
           </div>
         </div>
 
@@ -499,7 +501,8 @@ export default function GstInvoiceSheet({
           </div>
 
           {/* Advance Table Container */}
-          <div className="rounded-2xl border border-[#062c22]/20 dark:border-emerald-500/20 overflow-hidden shadow-sm">
+          <div className="rounded-2xl border border-[#062c22]/20 dark:border-emerald-500/20 overflow-x-auto custom-scrollbar shadow-sm">
+            <div className="min-w-[560px]">
             {/* Dark Green Table Header */}
             <div className="print-table-header grid grid-cols-[100px_1fr_160px_120px] sm:grid-cols-[120px_1fr_180px_140px] px-4 sm:px-5 py-3 bg-[#062c22] text-white font-bold text-xs uppercase tracking-wider">
               <span>DATE</span>
@@ -625,6 +628,7 @@ export default function GstInvoiceSheet({
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
 

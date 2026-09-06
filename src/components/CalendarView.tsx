@@ -466,8 +466,9 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         
         {/* Calendar Grid */}
-        <div className="xl:col-span-3 p-6 rounded-3xl glass-panel">
-          <div className="grid grid-cols-7 gap-2 text-center text-xs font-mono text-gray-400 mb-4 border-b border-luxury-green-800/20 pb-3 font-bold">
+        <div className="xl:col-span-3 p-6 rounded-3xl glass-panel overflow-x-auto custom-scrollbar">
+          <div className="min-w-[580px]">
+            <div className="grid grid-cols-7 gap-2 text-center text-xs font-mono text-gray-400 mb-4 border-b border-luxury-green-800/20 pb-3 font-bold">
             <span className="text-red-400/80">SUN</span>
             <span>MON</span>
             <span>TUE</span>
@@ -592,6 +593,7 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
                 </div>
               );
             })}
+          </div>
           </div>
         </div>
 

@@ -8,7 +8,8 @@ import {
   Building2, 
   Sparkles,
   Layers,
-  Filter
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 
 interface StudiosFilterBarProps {
@@ -117,6 +118,23 @@ export const StudiosFilterBar: React.FC<StudiosFilterBarProps> = ({
             </button>
           </div>
 
+          {/* Quick Reset Filters Button */}
+          {(searchQuery || activeFilter !== 'all' || sortBy !== 'name_asc') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setActiveFilter('all');
+                setSortBy('name_asc');
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-charcoal-900 hover:bg-sky-500/20 text-gray-400 hover:text-sky-300 border border-white/10 hover:border-sky-500/30 rounded-xl text-xs font-mono transition-all cursor-pointer shrink-0"
+              title="Reset all search queries, filters, and sort"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
+
           {/* Add Studio Action Button */}
           {(userRole === 'admin' || userRole === 'editor') && (
             <button
@@ -197,6 +215,22 @@ export const StudiosFilterBar: React.FC<StudiosFilterBarProps> = ({
           >
             👑 Top Partners
           </button>
+
+          {(searchQuery || activeFilter !== 'all' || sortBy !== 'name_asc') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setActiveFilter('all');
+                setSortBy('name_asc');
+              }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-charcoal-900/90 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-xs font-mono transition-all cursor-pointer"
+              title="Reset all filters"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Filters</span>
+            </button>
+          )}
         </div>
 
         <span className="text-[11px] font-mono text-gray-400 shrink-0">

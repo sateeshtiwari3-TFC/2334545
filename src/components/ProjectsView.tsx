@@ -23,6 +23,14 @@ import { WhatsAppShareModal } from './projects/WhatsAppShareModal';
 import ProjectWorksheetModal from './ProjectWorksheetModal';
 import QuickPrintInvoiceModal from './QuickPrintInvoiceModal';
 import { ProjectPdfExportModal } from './ProjectPdfExportModal';
+import { 
+  Trash2, 
+  RotateCcw, 
+  AlertTriangle, 
+  CheckCircle2, 
+  X,
+  AlertCircle
+} from 'lucide-react';
 
 interface ProjectsViewProps {
   projects: Project[];
@@ -41,6 +49,7 @@ interface ProjectsViewProps {
   onDeleteRevision?: (revId: string) => Promise<void>;
   onRedirectToRegistry?: () => void;
   initialTriggerAction?: string;
+  onOpenCreativeTool?: (mode: "soundtrack" | "captions", projectId?: string) => void;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -59,7 +68,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onResolveRevision,
   onDeleteRevision,
   onRedirectToRegistry,
-  initialTriggerAction
+  initialTriggerAction,
+  onOpenCreativeTool
 }) => {
   // View mode
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'kanban'>('grid');
@@ -93,6 +103,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
 
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
+
+  // In-app Action Confirmation Modals & Toast State
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [projectToReset, setProjectToReset] = useState<Project | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [toast, setToast] = useState<{ title: string; desc: string; type?: 'success' | 'info' | 'error' } | null>(null);
+
+  const triggerToast = (title: string, desc: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setToast({ title, desc, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   // Photo Hover Zoom Preview lightbox
   const [hoveredPhoto, setHoveredPhoto] = useState<{ url: string; title: string; subtitle: string } | null>(null);
@@ -239,14 +261,37 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     setIsFormModalOpen(true);
   };
 
-  // Open Delete
-  const handleDeleteProject = async (id: string, e?: React.MouseEvent) => {
+  // Open Delete in-app confirmation
+  const handleDeleteProject = (idOrProj: string | Project, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (window.confirm('Are you sure you want to delete / archive this project?')) {
-      await onDeleteProject(id);
-      if (selectedProjectForDetail?.id === id) {
+    const proj = typeof idOrProj === 'string' ? projects.find(p => p.id === idOrProj) : idOrProj;
+    if (proj) {
+      setProjectToDelete(proj);
+    } else if (typeof idOrProj === 'string') {
+      // Fallback if not found in cache
+      onDeleteProject(idOrProj);
+      triggerToast('Project Archived', 'Project moved to Recycle Bin.');
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!projectToDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteProject(projectToDelete.id);
+      if (selectedProjectForDetail?.id === projectToDelete.id) {
         setIsDetailDrawerOpen(false);
       }
+      triggerToast(
+        'Project Archived', 
+        `"${projectToDelete.coupleName || projectToDelete.projectName}" moved to Recycle Bin.`
+      );
+      setProjectToDelete(null);
+    } catch (err) {
+      console.error('Error deleting project:', err);
+      triggerToast('Delete Failed', 'Failed to delete project. Please try again.', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -272,6 +317,30 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const handleOpenQuickPrintInvoice = (proj: Project) => {
     setInvoiceProject(proj);
     setIsInvoiceModalOpen(true);
+  };
+
+  // Quick Reset Project Stage in-app confirmation
+  const handleResetProject = (proj: Project, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setProjectToReset(proj);
+  };
+
+  const handleConfirmReset = async () => {
+    if (!projectToReset) return;
+    setIsResetting(true);
+    try {
+      await onUpdateProject(projectToReset.id, { status: 'data_received' });
+      triggerToast(
+        'Workflow Stage Reset', 
+        `"${projectToReset.coupleName || projectToReset.projectName}" workflow stage set back to 'Data Received'.`
+      );
+      setProjectToReset(null);
+    } catch (err) {
+      console.error("Error resetting project:", err);
+      triggerToast('Reset Failed', 'Failed to reset project stage. Please try again.', 'error');
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   return (
@@ -337,6 +406,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             onOpenQuickPrintInvoice={handleOpenQuickPrintInvoice}
             onToggleTag={handleToggleTag}
             onUpdateStatus={handleUpdateStatus}
+            onResetProject={handleResetProject}
             setHoveredPhoto={setHoveredPhoto}
           />
         )}
@@ -361,6 +431,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             onOpenQuickPrintInvoice={handleOpenQuickPrintInvoice}
             onToggleTag={handleToggleTag}
             onUpdateStatus={handleUpdateStatus}
+            onResetProject={handleResetProject}
             setHoveredPhoto={setHoveredPhoto}
           />
         )}
@@ -378,6 +449,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             onOpenQuickNote={handleOpenQuickNote}
             onOpenWhatsAppShare={handleOpenWhatsAppShare}
             onUpdateStatus={handleUpdateStatus}
+            onResetProject={handleResetProject}
             setHoveredPhoto={setHoveredPhoto}
           />
         )}
@@ -416,6 +488,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         onOpenWhatsAppShare={(p) => handleOpenWhatsAppShare(p)}
         onOpenQuickNote={(p) => handleOpenQuickNote(p)}
         onToggleTag={handleToggleTag}
+        onOpenCreativeTool={onOpenCreativeTool}
+        onResetProject={handleResetProject}
       />
 
       {/* 5. New / Edit Wedding Registry Form Modal */}
@@ -425,8 +499,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         onSave={async (data) => {
           if (editingProject) {
             await onUpdateProject(editingProject.id, data);
+            triggerToast('Specs Saved', `"${data.coupleName || data.projectName}" specifications updated successfully.`);
           } else {
             await onAddProject(data);
+            triggerToast('Project Created', `"${data.coupleName || data.projectName}" registry created successfully.`);
           }
         }}
         editingProject={editingProject}
@@ -507,6 +583,137 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 <h4 className="text-xs font-bold text-white truncate font-display">{hoveredPhoto.title}</h4>
                 <p className="text-[10px] text-gold-400 font-mono truncate">{hoveredPhoto.subtitle}</p>
               </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 12. In-App Delete Project Confirmation Modal */}
+      <AnimatePresence>
+        {projectToDelete && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-charcoal-950 border border-rose-500/30 rounded-2xl p-6 shadow-2xl shadow-rose-950/50 relative overflow-hidden"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-11 h-11 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-white font-display">Delete / Archive Project?</h3>
+                  <p className="text-xs text-gray-300 mt-1 leading-relaxed">
+                    Are you sure you want to remove <span className="text-white font-semibold font-mono">"{projectToDelete.coupleName || projectToDelete.projectName}"</span>? The film will be moved to the Recycle Bin and can be restored if needed.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setProjectToDelete(null)}
+                  disabled={isDeleting}
+                  className="px-4 py-2 rounded-xl bg-charcoal-900 hover:bg-charcoal-800 text-gray-300 hover:text-white border border-white/5 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold font-mono tracking-wide shadow-lg shadow-rose-600/30 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeleting ? 'Deleting...' : 'Confirm Delete'}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 13. In-App Reset Stage Confirmation Modal */}
+      <AnimatePresence>
+        {projectToReset && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-charcoal-950 border border-sky-500/30 rounded-2xl p-6 shadow-2xl shadow-sky-950/50 relative overflow-hidden"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-11 h-11 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-white font-display">Reset Workflow Stage?</h3>
+                  <p className="text-xs text-gray-300 mt-1 leading-relaxed">
+                    Reset stage for <span className="text-white font-semibold font-mono">"{projectToReset.coupleName || projectToReset.projectName}"</span> back to <span className="text-sky-400 font-mono font-semibold">'Data Received'</span>? All existing notes, specifications, and drives will remain intact.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setProjectToReset(null)}
+                  disabled={isResetting}
+                  className="px-4 py-2 rounded-xl bg-charcoal-900 hover:bg-charcoal-800 text-gray-300 hover:text-white border border-white/5 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReset}
+                  disabled={isResetting}
+                  className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold font-mono tracking-wide shadow-lg shadow-sky-600/30 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{isResetting ? 'Resetting...' : 'Reset Stage'}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 14. Real-Time Action Feedback Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 right-6 z-[110] max-w-sm w-full pointer-events-auto"
+          >
+            <div className={`p-4 rounded-2xl border backdrop-blur-xl shadow-2xl flex items-start gap-3 ${
+              toast.type === 'error'
+                ? 'bg-rose-950/90 border-rose-500/40 text-rose-100 shadow-rose-950/60'
+                : toast.type === 'info'
+                ? 'bg-sky-950/90 border-sky-500/40 text-sky-100 shadow-sky-950/60'
+                : 'bg-charcoal-950/95 border-gold-500/40 text-white shadow-black/80'
+            }`}>
+              <div className="shrink-0 mt-0.5">
+                {toast.type === 'error' ? (
+                  <AlertCircle className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-gold-400" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h5 className="text-xs font-bold font-display">{toast.title}</h5>
+                <p className="text-[11px] text-gray-300 mt-0.5 leading-snug">{toast.desc}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setToast(null)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           </motion.div>
         )}

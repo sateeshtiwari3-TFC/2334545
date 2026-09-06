@@ -15,10 +15,15 @@ import {
   CheckCircle,
   FileText,
   Mail,
-  Workflow
+  Workflow,
+  Music,
+  Share2,
+  Headphones
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Project, Studio, Editor, Expense, CalendarEvent, UserProfile } from "../types";
+import { WeddingSoundtrackSuggester } from "./creative/WeddingSoundtrackSuggester";
+import { ReelsCaptionGenerator } from "./creative/ReelsCaptionGenerator";
 
 interface GeminiAIViewProps {
   projects: Project[];
@@ -27,6 +32,8 @@ interface GeminiAIViewProps {
   expenses: Expense[];
   calendarEvents: CalendarEvent[];
   currentUser: UserProfile | null;
+  initialMode?: "chat" | "soundtrack" | "captions";
+  preselectedProjectId?: string;
 }
 
 interface Message {
@@ -44,8 +51,11 @@ export default function GeminiAIView({
   editors,
   expenses,
   calendarEvents,
-  currentUser
+  currentUser,
+  initialMode = "soundtrack",
+  preselectedProjectId
 }: GeminiAIViewProps) {
+  const [activeTab, setActiveTab] = useState<"soundtrack" | "captions" | "chat">(initialMode);
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -313,96 +323,174 @@ Unable to process your request at this time.
 
   return (
     <div className="space-y-6">
-      {/* Cinematic Ambient Banner */}
-      <div className="relative p-6 md:p-8 rounded-3xl bg-gradient-to-br from-luxury-green-950 to-charcoal-900 border border-luxury-green-800/15 overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-gold-500/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-luxury-green-500/5 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="space-y-2 relative z-10">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 bg-gold-500/10 border border-gold-500/20 rounded-full">
-            <Sparkles className="w-3.5 h-3.5 text-gold-400 animate-pulse" />
-            <span className="text-[10px] font-mono font-bold text-gold-400 uppercase tracking-widest">Enterprise AI Intelligence</span>
-          </div>
-          <h2 className="text-xl md:text-2xl font-bold text-white font-display tracking-tight">Frame Cut AI Workspace</h2>
-          <p className="text-xs text-gray-400 max-w-xl leading-relaxed">
-            Harness real-time studio database synchronization. Query operational workflows, run diagnostic audits, and formulate strategic actions utilizing Google Gemini model architectures.
-          </p>
+      {/* AI Hub Navigation Bar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2 bg-charcoal-900/90 border border-luxury-green-800/25 rounded-2xl shadow-xl backdrop-blur-md">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setActiveTab("soundtrack")}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
+              activeTab === "soundtrack"
+                ? "bg-gradient-to-r from-gold-500 to-amber-500 text-charcoal-950 shadow-md shadow-gold-500/20"
+                : "text-gray-300 hover:text-white hover:bg-luxury-green-950/50"
+            }`}
+          >
+            <Music className="w-4 h-4" />
+            <span>Wedding Soundtrack Suggester</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium ${
+              activeTab === "soundtrack" ? "bg-charcoal-950/20 text-charcoal-950 font-bold" : "bg-gold-500/10 text-gold-400"
+            }`}>
+              AI Audio
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("captions")}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
+              activeTab === "captions"
+                ? "bg-gradient-to-r from-gold-500 to-amber-500 text-charcoal-950 shadow-md shadow-gold-500/20"
+                : "text-gray-300 hover:text-white hover:bg-luxury-green-950/50"
+            }`}
+          >
+            <Share2 className="w-4 h-4" />
+            <span>Reels & YouTube Captions</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium ${
+              activeTab === "captions" ? "bg-charcoal-950/20 text-charcoal-950 font-bold" : "bg-emerald-500/10 text-emerald-400"
+            }`}>
+              Viral Hooks
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
+              activeTab === "chat"
+                ? "bg-gradient-to-r from-gold-500 to-amber-500 text-charcoal-950 shadow-md shadow-gold-500/20"
+                : "text-gray-300 hover:text-white hover:bg-luxury-green-950/50"
+            }`}
+          >
+            <Bot className="w-4 h-4" />
+            <span>Studio Operations Assistant</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium ${
+              activeTab === "chat" ? "bg-charcoal-950/20 text-charcoal-950 font-bold" : "bg-blue-500/10 text-blue-400"
+            }`}>
+              ERP Sync
+            </span>
+          </button>
         </div>
 
-        {/* Dual Mode Intelligence Switcher */}
-        <div className="p-4 bg-charcoal-950/80 border border-luxury-green-800/20 rounded-2xl md:min-w-[280px] space-y-3 shrink-0 relative z-10">
-          <div className="flex items-center justify-between pb-2 border-b border-luxury-green-800/10">
-            <div className="flex items-center space-x-2">
-              <BrainCircuit className="w-4 h-4 text-gold-400" />
-              <span className="text-xs font-bold text-white font-display">Intelligence Level</span>
-            </div>
-            <span className="text-[9px] font-mono text-gray-500 bg-charcoal-900 px-1.5 py-0.5 rounded uppercase">Config</span>
-          </div>
-
-          <div className="space-y-2">
-            <button
-              onClick={() => setUseHighThinking(true)}
-              className={`w-full p-2 rounded-xl border text-left transition-all flex items-center justify-between ${
-                useHighThinking
-                  ? "bg-gold-500/10 border-gold-500 text-gold-400"
-                  : "bg-transparent border-transparent text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              <div>
-                <span className="text-xs font-bold block">Deep Reasoning Mode</span>
-                <span className="text-[9px] text-gray-500 block">gemini-3.1-pro-preview • HIGH Thinking</span>
-              </div>
-              <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                useHighThinking ? "border-gold-500 bg-gold-500 text-charcoal-950" : "border-gray-600"
-              }`}>
-                {useHighThinking && <CheckCircle className="w-2.5 h-2.5 text-charcoal-950 stroke-[3]" />}
-              </div>
-            </button>
-
-            <button
-              onClick={() => setUseHighThinking(false)}
-              className={`w-full p-2 rounded-xl border text-left transition-all flex items-center justify-between ${
-                !useHighThinking
-                  ? "bg-emerald-500/10 border-emerald-500 text-emerald-400"
-                  : "bg-transparent border-transparent text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              <div>
-                <span className="text-xs font-bold block">Standard Fast Mode</span>
-                <span className="text-[9px] text-gray-500 block">gemini-3.5-flash • Direct Output</span>
-              </div>
-              <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                !useHighThinking ? "border-emerald-500 bg-emerald-500 text-charcoal-950" : "border-gray-600"
-              }`}>
-                {!useHighThinking && <CheckCircle className="w-2.5 h-2.5 text-charcoal-950 stroke-[3]" />}
-              </div>
-            </button>
-          </div>
-
-          {quotaWarning && (
-            <div className="p-3 bg-amber-950/30 border border-amber-500/20 rounded-xl text-[10px] text-amber-400 space-y-1">
-              <div className="flex items-center space-x-1.5 font-bold">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span>Quota Override Active</span>
-              </div>
-              <p className="leading-normal text-[9px] text-gray-400">
-                Deep reasoning models failed or exceeded current quota/rate limits on your API Key. Standard Fast Mode is active.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  localStorage.removeItem("tfc_ai_quota_limited");
-                  setQuotaWarning(false);
-                  setUseHighThinking(true);
-                }}
-                className="text-[9px] text-amber-500 hover:text-amber-400 font-bold underline font-mono cursor-pointer block mt-1"
-              >
-                Retry Deep Reasoning Mode
-              </button>
-            </div>
-          )}
+        <div className="flex items-center space-x-2 px-3 py-1 text-[11px] font-mono text-gray-400">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>Gemini 3.8 Flash & Pro</span>
         </div>
       </div>
+
+      {/* RENDER ACTIVE TAB */}
+      {activeTab === "soundtrack" && (
+        <WeddingSoundtrackSuggester 
+          projects={projects} 
+          preselectedProjectId={preselectedProjectId} 
+        />
+      )}
+
+      {activeTab === "captions" && (
+        <ReelsCaptionGenerator 
+          projects={projects} 
+          preselectedProjectId={preselectedProjectId} 
+        />
+      )}
+
+      {activeTab === "chat" && (
+        <div className="space-y-6">
+          {/* Cinematic Ambient Banner */}
+          <div className="relative p-6 md:p-8 rounded-3xl bg-gradient-to-br from-luxury-green-950 to-charcoal-900 border border-luxury-green-800/15 overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-gold-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-luxury-green-500/5 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="space-y-2 relative z-10">
+              <div className="inline-flex items-center space-x-2 px-3 py-1 bg-gold-500/10 border border-gold-500/20 rounded-full">
+                <Sparkles className="w-3.5 h-3.5 text-gold-400 animate-pulse" />
+                <span className="text-[10px] font-mono font-bold text-gold-400 uppercase tracking-widest">Enterprise AI Intelligence</span>
+              </div>
+              <h2 className="text-xl md:text-2xl font-bold text-white font-display tracking-tight">Frame Cut AI Workspace</h2>
+              <p className="text-xs text-gray-400 max-w-xl leading-relaxed">
+                Harness real-time studio database synchronization. Query operational workflows, run diagnostic audits, and formulate strategic actions utilizing Google Gemini model architectures.
+              </p>
+            </div>
+
+            {/* Dual Mode Intelligence Switcher */}
+            <div className="p-4 bg-charcoal-950/80 border border-luxury-green-800/20 rounded-2xl md:min-w-[280px] space-y-3 shrink-0 relative z-10">
+              <div className="flex items-center justify-between pb-2 border-b border-luxury-green-800/10">
+                <div className="flex items-center space-x-2">
+                  <BrainCircuit className="w-4 h-4 text-gold-400" />
+                  <span className="text-xs font-bold text-white font-display">Intelligence Level</span>
+                </div>
+                <span className="text-[9px] font-mono text-gray-500 bg-charcoal-900 px-1.5 py-0.5 rounded uppercase">Config</span>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  onClick={() => setUseHighThinking(true)}
+                  className={`w-full p-2 rounded-xl border text-left transition-all flex items-center justify-between ${
+                    useHighThinking
+                      ? "bg-gold-500/10 border-gold-500 text-gold-400"
+                      : "bg-transparent border-transparent text-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  <div>
+                    <span className="text-xs font-bold block">Deep Reasoning Mode</span>
+                    <span className="text-[9px] text-gray-500 block">gemini-3.1-pro-preview • HIGH Thinking</span>
+                  </div>
+                  <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                    useHighThinking ? "border-gold-500 bg-gold-500 text-charcoal-950" : "border-gray-600"
+                  }`}>
+                    {useHighThinking && <CheckCircle className="w-2.5 h-2.5 text-charcoal-950 stroke-[3]" />}
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setUseHighThinking(false)}
+                  className={`w-full p-2 rounded-xl border text-left transition-all flex items-center justify-between ${
+                    !useHighThinking
+                      ? "bg-emerald-500/10 border-emerald-500 text-emerald-400"
+                      : "bg-transparent border-transparent text-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  <div>
+                    <span className="text-xs font-bold block">Standard Fast Mode</span>
+                    <span className="text-[9px] text-gray-500 block">gemini-3.8-flash • Direct Output</span>
+                  </div>
+                  <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                    !useHighThinking ? "border-emerald-500 bg-emerald-500 text-charcoal-950" : "border-gray-600"
+                  }`}>
+                    {!useHighThinking && <CheckCircle className="w-2.5 h-2.5 text-charcoal-950 stroke-[3]" />}
+                  </div>
+                </button>
+              </div>
+
+              {quotaWarning && (
+                <div className="p-3 bg-amber-950/30 border border-amber-500/20 rounded-xl text-[10px] text-amber-400 space-y-1">
+                  <div className="flex items-center space-x-1.5 font-bold">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span>Quota Override Active</span>
+                  </div>
+                  <p className="leading-normal text-[9px] text-gray-400">
+                    Deep reasoning models failed or exceeded current quota/rate limits on your API Key. Standard Fast Mode is active.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem("tfc_ai_quota_limited");
+                      setQuotaWarning(false);
+                      setUseHighThinking(true);
+                    }}
+                    className="text-[9px] text-amber-500 hover:text-amber-400 font-bold underline font-mono cursor-pointer block mt-1"
+                  >
+                    Retry Deep Reasoning Mode
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
 
       {/* Main Workspace Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -427,7 +515,7 @@ Unable to process your request at this time.
 
               <div className="text-[10px] text-gray-500 font-mono flex items-center space-x-1">
                 <span>Model:</span>
-                <span className="text-gold-400 font-semibold">{useHighThinking ? "gemini-3.1-pro" : "gemini-3.5-flash"}</span>
+                <span className="text-gold-400 font-semibold">{useHighThinking ? "gemini-3.1-pro" : "gemini-3.8-flash"}</span>
               </div>
             </div>
 
@@ -618,6 +706,8 @@ Unable to process your request at this time.
         </div>
 
       </div>
+    </div>
+  )}
     </div>
   );
 }

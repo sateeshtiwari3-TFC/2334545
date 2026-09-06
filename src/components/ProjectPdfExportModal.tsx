@@ -628,8 +628,8 @@ export const ProjectPdfExportModal: React.FC<ProjectPdfExportModalProps> = ({
                 {/* --- MODE A: EXECUTIVE TABLE LEDGER --- */}
                 {layoutMode === 'table' && (
                   <div className="space-y-4">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse text-xs">
+                    <div className="overflow-x-auto custom-scrollbar">
+                      <table className="w-full min-w-[800px] text-left border-collapse text-xs">
                         <thead>
                           <tr className={`border-b text-[9px] uppercase font-mono tracking-wider ${
                             theme === 'dark'

@@ -17,7 +17,8 @@ import {
   FileDown,
   Building2,
   AlertCircle,
-  Activity
+  Activity,
+  RotateCcw
 } from 'lucide-react';
 import { Project, Studio, Editor, Revision, UserRole, ProjectStatus } from '../../types';
 import { ProjectTagList } from '../ProjectTagBadge';
@@ -42,6 +43,7 @@ interface ProjectListViewProps {
   onOpenQuickPrintInvoice: (proj: Project) => void;
   onToggleTag: (projectId: string, tagId: string, e: React.MouseEvent) => void;
   onUpdateStatus: (projectId: string, status: ProjectStatus) => Promise<void>;
+  onResetProject?: (proj: Project, e: React.MouseEvent) => void;
   setHoveredPhoto: (photo: { url: string; title: string; subtitle: string } | null) => void;
 }
 
@@ -58,36 +60,14 @@ const WORKFLOW_STAGES: { id: ProjectStatus; label: string; color: string; bg: st
 
 const DEFAULT_COVER_IMAGE = 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600';
 
-const listContainerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.04,
-      delayChildren: 0.02
-    }
-  }
-};
-
-const projectRowVariants = {
-  hidden: { 
-    opacity: 0, 
-    y: 12,
-    filter: 'blur(2px)'
-  },
-  visible: { 
-    opacity: 1, 
-    y: 0,
-    filter: 'blur(0px)',
-    transition: { 
-      duration: 0.35, 
-      ease: [0.16, 1, 0.3, 1] 
-    } 
-  },
-  exit: {
-    opacity: 0,
-    scale: 0.98,
-    transition: { duration: 0.18, ease: 'easeOut' }
+const rowMotionConfig = {
+  initial: { opacity: 0, y: 10, scale: 0.98 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, scale: 0.97, transition: { duration: 0.18, ease: 'easeOut' } },
+  transition: {
+    layout: { type: "spring", stiffness: 350, damping: 32 },
+    opacity: { duration: 0.22 },
+    y: { duration: 0.22 }
   }
 };
 
@@ -110,6 +90,7 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
   onOpenQuickPrintInvoice,
   onToggleTag,
   onUpdateStatus,
+  onResetProject,
   setHoveredPhoto
 }) => {
   // Real-time breakdown counts
@@ -215,36 +196,38 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
       {/* Main Table Container */}
       <div className="rounded-3xl bg-charcoal-900 border border-luxury-green-800/25 overflow-hidden shadow-2xl">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-charcoal-950 border-b border-luxury-green-800/30 text-[11px] uppercase font-mono tracking-wider text-gray-400">
-                <th className="p-4 pl-6">ID & Couple</th>
-                <th className="p-4">Studio Partner</th>
-                <th className="p-4">Tags & Deliverables</th>
-                <th className="p-4">Delivery Deadline</th>
-                <th className="p-4">Lead Editor</th>
-                <th className="p-4 min-w-[190px]">Workflow Status</th>
-                <th className="p-4">{userRole === 'admin' ? 'Contract / Due' : 'Your Share'}</th>
-                <th className="p-4 pr-6 text-right">Actions</th>
-              </tr>
-            </thead>
-            <motion.tbody 
-              variants={listContainerVariants} 
-              initial="hidden" 
-              animate="visible" 
-              className="divide-y divide-white/5"
+          <div className="min-w-[1100px]">
+            {/* Grid Header */}
+            <div className="grid grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(140px,1.1fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(180px,1.3fr)_minmax(110px,0.9fr)_minmax(150px,auto)] items-center px-6 py-4 bg-charcoal-950 border-b border-luxury-green-800/30 text-[11px] uppercase font-mono tracking-wider text-gray-400 select-none">
+              <div>ID & Couple</div>
+              <div>Studio Partner</div>
+              <div>Tags & Deliverables</div>
+              <div>Delivery Deadline</div>
+              <div>Lead Editor</div>
+              <div>Workflow Status</div>
+              <div>{userRole === 'admin' ? 'Contract / Due' : 'Your Share'}</div>
+              <div className="text-right pr-2">Actions</div>
+            </div>
+
+            {/* List Body with Framer Motion Spring Layout Reordering */}
+            <motion.div 
+              layout 
+              className="divide-y divide-white/5 font-display"
+              transition={{
+                layout: { type: "spring", stiffness: 350, damping: 32 }
+              }}
             >
-              <AnimatePresence mode="popLayout">
+              <AnimatePresence mode="popLayout" initial={false}>
                 {projects.length === 0 ? (
-                  <motion.tr
+                  <motion.div
                     key="empty-state"
-                    variants={projectRowVariants}
-                    className="hover:bg-transparent"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                    className="py-12 text-center text-gray-500 font-mono text-xs"
                   >
-                    <td colSpan={8} className="py-12 text-center text-gray-500 font-mono text-xs">
-                      No matching wedding projects found in this filter view.
-                    </td>
-                  </motion.tr>
+                    No matching wedding projects found in this filter view.
+                  </motion.div>
                 ) : (
                   projects.map((proj) => {
                     const stage = WORKFLOW_STAGES.find(s => s.id === proj.status) || WORKFLOW_STAGES[0];
@@ -262,15 +245,18 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                     const isUrgent = remainingDays !== null && remainingDays >= 0 && remainingDays <= 3 && !['delivered', 'closed'].includes(proj.status);
 
                     return (
-                      <motion.tr
+                      <motion.div
                         key={proj.id}
-                        variants={projectRowVariants}
                         layout
+                        initial={rowMotionConfig.initial}
+                        animate={rowMotionConfig.animate}
+                        exit={rowMotionConfig.exit}
+                        transition={rowMotionConfig.transition}
                         onClick={() => onSelectProject(proj)}
-                        className="hover:bg-charcoal-800/60 transition-colors cursor-pointer group"
+                        className="grid grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(140px,1.1fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(180px,1.3fr)_minmax(110px,0.9fr)_minmax(150px,auto)] items-center px-6 py-3.5 hover:bg-charcoal-800/60 transition-colors cursor-pointer group"
                       >
                         {/* ID & Couple with Cover Photo */}
-                        <td className="p-4 pl-6">
+                        <div>
                           <div className="flex items-center space-x-3">
                             <img
                               src={proj.couplePhoto || DEFAULT_COVER_IMAGE}
@@ -283,33 +269,33 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                               })}
                               onMouseLeave={() => setHoveredPhoto(null)}
                             />
-                            <div>
+                            <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="font-mono text-xs text-gold-400 font-bold">{proj.id}</span>
                                 {proj.priority === 'urgent' && (
                                   <span className="text-[9px] font-mono text-rose-400 font-bold bg-rose-500/10 px-1.5 py-0.2 rounded border border-rose-500/30">URGENT</span>
                                 )}
                               </div>
-                              <span className="text-xs font-bold text-gray-100 group-hover:text-gold-300 transition-colors block">
+                              <span className="text-xs font-bold text-gray-100 group-hover:text-gold-300 transition-colors block truncate">
                                 {proj.projectName || proj.coupleName}
                               </span>
                               {proj.projectName && (
-                                <span className="text-[10px] text-gray-400 font-mono block">{proj.coupleName}</span>
+                                <span className="text-[10px] text-gray-400 font-mono block truncate">{proj.coupleName}</span>
                               )}
                             </div>
                           </div>
-                        </td>
+                        </div>
 
                         {/* Studio Partner */}
-                        <td className="p-4">
+                        <div>
                           <div className="flex items-center gap-1.5 text-xs text-gray-300 font-medium">
                             <Building2 className="w-3.5 h-3.5 text-gold-400 shrink-0" />
-                            <span>{proj.studioName || studio?.name || 'Direct Client'}</span>
+                            <span className="truncate">{proj.studioName || studio?.name || 'Direct Client'}</span>
                           </div>
-                        </td>
+                        </div>
 
                         {/* Tags */}
-                        <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                        <div onClick={(e) => e.stopPropagation()}>
                           <ProjectTagList
                             tags={proj.tags}
                             projectId={proj.id}
@@ -318,10 +304,10 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                             maxVisible={2}
                             size="xs"
                           />
-                        </td>
+                        </div>
 
                         {/* Deadline */}
-                        <td className="p-4">
+                        <div>
                           <div className="text-xs font-mono">
                             <span className="text-gray-300 block">{proj.deliveryDate || 'No date'}</span>
                             {remainingDays !== null && (
@@ -332,28 +318,28 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                               </span>
                             )}
                           </div>
-                        </td>
+                        </div>
 
                         {/* Lead Editor */}
-                        <td className="p-4">
+                        <div>
                           <div className="flex items-center gap-1.5 text-xs text-gray-300">
                             <User className="w-3.5 h-3.5 text-gold-400 shrink-0" />
-                            <span>{editor ? editor.name : (proj.assignedEditorName || 'Unassigned')}</span>
+                            <span className="truncate">{editor ? editor.name : (proj.assignedEditorName || 'Unassigned')}</span>
                           </div>
-                        </td>
+                        </div>
 
                         {/* Inline Workflow Status Dynamic Color Badge */}
-                        <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                        <div onClick={(e) => e.stopPropagation()}>
                           <ProjectStatusBadge
                             status={proj.status}
                             variant="interactive"
                             size="sm"
                             onStatusChange={(newStatus) => onUpdateStatus(proj.id, newStatus)}
                           />
-                        </td>
+                        </div>
 
                         {/* Financials */}
-                        <td className="p-4">
+                        <div>
                           {userRole === 'admin' ? (
                             <div className="text-xs font-mono">
                               <span className="text-gray-200 font-bold block">₹{amount.toLocaleString('en-IN')}</span>
@@ -366,10 +352,10 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                               ₹{(proj.isSplitProject ? (proj.firstEditorShare || 0) : (proj.editorPayment || 0)).toLocaleString('en-IN')}
                             </div>
                           )}
-                        </td>
+                        </div>
 
                         {/* Actions */}
-                        <td className="p-4 pr-6 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="text-right pr-2" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
@@ -411,6 +397,22 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                               <Edit className="w-3.5 h-3.5" />
                             </button>
 
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onResetProject) {
+                                  onResetProject(proj, e);
+                                } else {
+                                  onUpdateStatus(proj.id, 'data_received');
+                                }
+                              }}
+                              className="p-1.5 rounded-lg bg-white/5 hover:bg-sky-500/20 text-gray-400 hover:text-sky-400 transition-all cursor-pointer"
+                              title="Reset Stage to Data Received"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+
                             {(userRole === 'admin' || userRole === 'editor') && (
                               <button
                                 type="button"
@@ -422,15 +424,15 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                               </button>
                             )}
                           </div>
-                        </td>
+                        </div>
 
-                      </motion.tr>
+                      </motion.div>
                     );
                   })
                 )}
               </AnimatePresence>
-            </motion.tbody>
-          </table>
+            </motion.div>
+          </div>
         </div>
       </div>
     </div>
