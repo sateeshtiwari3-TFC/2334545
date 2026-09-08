@@ -24,7 +24,8 @@ import {
   TrendingUp,
   PieChart,
   History,
-  Trash2
+  Trash2,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../types';
@@ -60,6 +61,7 @@ export default function Sidebar({ activeTab, setActiveTab, currentUser, onLogout
     { id: 'datamanager', label: 'Data Manager', mobileLabel: 'Storage', icon: HardDrive, roles: ['admin'] },
     { id: 'calendar', label: 'Calendar', mobileLabel: 'Calendar', icon: Calendar, roles: ['admin', 'editor'] },
     { id: 'gemini', label: 'Gemini AI', mobileLabel: 'AI Studio', icon: Sparkles, roles: ['admin', 'editor', 'studio'] },
+    { id: 'automation', label: 'Automations', mobileLabel: 'Auto', icon: Zap, roles: ['admin', 'editor'] },
     { id: 'audit', label: 'Audit Log', mobileLabel: 'Audit', icon: History, roles: ['admin', 'editor', 'studio'] },
     { id: 'reports', label: 'Reports', mobileLabel: 'Reports', icon: BarChart3, roles: ['admin'] },
     { id: 'notifications', label: 'Notifications', mobileLabel: 'Alerts', icon: Bell, roles: ['admin', 'editor', 'studio'] },

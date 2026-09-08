@@ -47,32 +47,44 @@ export const ProjectQuickNoteModal: React.FC<ProjectQuickNoteModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4 py-6">
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 overflow-y-auto pointer-events-none">
+      <div 
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm pointer-events-auto transition-opacity" 
+        onClick={onClose} 
+      />
 
+      <div className="fixed top-4 md:top-6 left-1/2 -translate-x-1/2 w-full max-w-xl px-4 pointer-events-auto z-50">
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="inline-block w-full max-w-lg overflow-hidden rounded-3xl bg-charcoal-950 border border-gold-500/30 p-6 relative z-10 shadow-2xl space-y-4"
+          initial={{ opacity: 0, y: -50, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -40, scale: 0.95 }}
+          transition={{ type: "spring", stiffness: 450, damping: 28 }}
+          className="w-full overflow-hidden rounded-3xl bg-charcoal-950/95 border-2 border-amber-500/60 p-5 md:p-6 relative shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_35px_rgba(245,158,11,0.3)] backdrop-blur-2xl space-y-4 ring-1 ring-amber-400/20"
         >
+          {/* Top Floating Handle Pill */}
+          <div className="flex justify-center -mt-2 mb-1">
+            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-[9px] font-mono font-bold text-amber-300 uppercase tracking-widest shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+              Floating Top Quick Note
+            </span>
+          </div>
+
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center shadow-inner">
                 <StickyNote className="w-4 h-4 text-amber-400" />
               </div>
               <div>
                 <h3 className="text-sm font-bold font-display text-white">Production Quick Note</h3>
-                <p className="text-[10px] text-gray-400 font-mono">{project.id} • {project.coupleName}</p>
+                <p className="text-[10px] text-amber-300/80 font-mono font-semibold">{project.id} • {project.coupleName}</p>
               </div>
             </div>
 
             <button
               type="button"
               onClick={onClose}
-              className="w-7 h-7 rounded-full bg-charcoal-900 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer"
+              className="w-7 h-7 rounded-full bg-charcoal-900/90 text-gray-400 hover:text-white hover:bg-charcoal-800 flex items-center justify-center cursor-pointer transition-colors border border-white/10"
             >
               <X className="w-4 h-4" />
             </button>

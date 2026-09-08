@@ -74,6 +74,16 @@ service cloud.firestore {
     match /audit_logs/{auditId} {
       allow read, write: if true;
     }
+
+    // Temporary quick notes & scratchpad
+    match /quick_notes/{noteId} {
+      allow read, write: if true;
+    }
+
+    // Automation Rules & dynamic status transitions
+    match /automation_rules/{ruleId} {
+      allow read, write: if true;
+    }
   }
 }
 

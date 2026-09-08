@@ -61,6 +61,34 @@ const WORKFLOW_STAGES = [
 
 const DEFAULT_COVER_IMAGE = 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600';
 
+const gridContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.04,
+      delayChildren: 0.02
+    }
+  }
+};
+
+const cardItemVariants = {
+  hidden: { opacity: 0, y: 16, scale: 0.97 },
+  visible: (i: number = 0) => ({
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      type: "spring",
+      stiffness: 350,
+      damping: 26,
+      mass: 0.8,
+      delay: Math.min(i * 0.03, 0.3)
+    }
+  }),
+  exit: { opacity: 0, scale: 0.95, y: -10, transition: { duration: 0.15 } }
+};
+
 export const ProjectCardGrid: React.FC<ProjectCardGridProps> = ({
   projects,
   studios,
@@ -94,9 +122,15 @@ export const ProjectCardGrid: React.FC<ProjectCardGridProps> = ({
   }
 
   return (
-    <motion.div layout className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+    <motion.div 
+      layout 
+      variants={gridContainerVariants}
+      initial="hidden"
+      animate="visible"
+      className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
+    >
       <AnimatePresence mode="popLayout">
-        {projects.map((proj) => {
+        {projects.map((proj, index) => {
           const stage = WORKFLOW_STAGES.find(s => s.id === proj.status) || WORKFLOW_STAGES[0];
           const editor = editors.find(e => e.id === proj.assignedEditorId || e.name === proj.assignedEditorName);
           const studio = studios.find(s => s.id === proj.studioId || s.name === proj.studioName);
@@ -124,15 +158,12 @@ export const ProjectCardGrid: React.FC<ProjectCardGridProps> = ({
           return (
             <motion.div
               key={proj.id}
-              layout
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.94 }}
-              transition={{
-                layout: { type: "spring", stiffness: 350, damping: 30 },
-                opacity: { duration: 0.2 },
-                scale: { duration: 0.2 }
-              }}
+              layout="position"
+              custom={index}
+              variants={cardItemVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
               className="h-full"
             >
               <SwipeableCard

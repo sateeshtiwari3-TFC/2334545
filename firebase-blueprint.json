@@ -32,8 +32,8 @@
       "required": ["id", "title", "message", "type", "read"]
     },
     "calendar": {
-      "title": "Calendar Events",
-      "description": "Upcoming project shoot, delivery, and revision deadlines",
+      "title": "Calendar Events & Reminders",
+      "description": "Upcoming project shoot, delivery, deadlines, and high-priority payment or project reminders",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -42,7 +42,14 @@
         "type": { "type": "string" },
         "projectId": { "type": "string" },
         "coupleName": { "type": "string" },
-        "color": { "type": "string" }
+        "color": { "type": "string" },
+        "isReminder": { "type": "boolean" },
+        "reminderCategory": { "type": "string" },
+        "amount": { "type": "number" },
+        "studioName": { "type": "string" },
+        "notes": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "priority": { "type": "string" }
       },
       "required": ["id", "title", "start"]
     },
@@ -147,6 +154,41 @@
         "isDefault": { "type": "boolean" }
       },
       "required": ["id", "name", "eventType"]
+    },
+    "quick_notes": {
+      "title": "Quick Notes & Scratchpad",
+      "description": "Temporary project reminders, observation notes, and quick punch-lists",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "content": { "type": "string" },
+        "projectId": { "type": "string" },
+        "projectName": { "type": "string" },
+        "tag": { "type": "string" },
+        "isPinned": { "type": "boolean" },
+        "isCompleted": { "type": "boolean" }
+      },
+      "required": ["id", "content"]
+    },
+    "automation_rules": {
+      "title": "Automation Rules",
+      "description": "Event-driven project status transition and keyword trigger rules",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "keywordTrigger": { "type": "string" },
+        "pathMatchPattern": { "type": "string" },
+        "folderField": { "type": "string" },
+        "triggerEvent": { "type": "string" },
+        "targetStatus": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "autoNotify": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "targetStatus"]
     }
   },
   "firestore": {
@@ -185,6 +227,14 @@
     "recycle_bin/{binId}": {
       "schema": "recycle_bin",
       "description": "Safe trash and recycle bin backup collection"
+    },
+    "quick_notes/{noteId}": {
+      "schema": "quick_notes",
+      "description": "Quick scratchpad notes and temporary reminders"
+    },
+    "automation_rules/{ruleId}": {
+      "schema": "automation_rules",
+      "description": "Status transition automation rules and keyword triggers"
     }
   }
 }

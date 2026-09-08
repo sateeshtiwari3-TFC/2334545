@@ -34,6 +34,7 @@ interface ProjectListViewProps {
   setStatusFilter: (status: string) => void;
   deadlineFilter: string;
   setDeadlineFilter: (deadline: string) => void;
+  searchQuery?: string;
   onSelectProject: (proj: Project) => void;
   onEditProject: (proj: Project, e: React.MouseEvent) => void;
   onDeleteProject: (id: string, e: React.MouseEvent) => void;
@@ -60,14 +61,41 @@ const WORKFLOW_STAGES: { id: ProjectStatus; label: string; color: string; bg: st
 
 const DEFAULT_COVER_IMAGE = 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600';
 
-const rowMotionConfig = {
-  initial: { opacity: 0, y: 10, scale: 0.98 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, scale: 0.97, transition: { duration: 0.18, ease: 'easeOut' } },
-  transition: {
-    layout: { type: "spring", stiffness: 350, damping: 32 },
-    opacity: { duration: 0.22 },
-    y: { duration: 0.22 }
+// Stagger animation variants for project list container & rows
+const listContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.04,
+      delayChildren: 0.02
+    }
+  }
+};
+
+const rowVariants = {
+  hidden: { 
+    opacity: 0, 
+    y: 12, 
+    scale: 0.985 
+  },
+  visible: (i: number = 0) => ({ 
+    opacity: 1, 
+    y: 0, 
+    scale: 1,
+    transition: {
+      type: "spring",
+      stiffness: 350,
+      damping: 26,
+      mass: 0.8,
+      delay: Math.min(i * 0.035, 0.35)
+    }
+  }),
+  exit: { 
+    opacity: 0, 
+    scale: 0.97, 
+    y: -8, 
+    transition: { duration: 0.15, ease: 'easeOut' } 
   }
 };
 
@@ -81,6 +109,7 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
   setStatusFilter,
   deadlineFilter,
   setDeadlineFilter,
+  searchQuery = '',
   onSelectProject,
   onEditProject,
   onDeleteProject,
@@ -209,15 +238,19 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
               <div className="text-right pr-2">Actions</div>
             </div>
 
-            {/* List Body with Framer Motion Spring Layout Reordering */}
+            {/* List Body with Staggered Entrance and Motion Layout Reordering */}
             <motion.div 
+              key={`project-list-${statusFilter}-${deadlineFilter}-${searchQuery}-${projects.length}`}
               layout 
+              variants={listContainerVariants}
+              initial="hidden"
+              animate="visible"
               className="divide-y divide-white/5 font-display"
               transition={{
                 layout: { type: "spring", stiffness: 350, damping: 32 }
               }}
             >
-              <AnimatePresence mode="popLayout" initial={false}>
+              <AnimatePresence mode="popLayout" initial={true}>
                 {projects.length === 0 ? (
                   <motion.div
                     key="empty-state"
@@ -229,7 +262,7 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                     No matching wedding projects found in this filter view.
                   </motion.div>
                 ) : (
-                  projects.map((proj) => {
+                  projects.map((proj, index) => {
                     const stage = WORKFLOW_STAGES.find(s => s.id === proj.status) || WORKFLOW_STAGES[0];
                     const editor = editors.find(e => e.id === proj.assignedEditorId || e.name === proj.assignedEditorName);
                     const studio = studios.find(s => s.id === proj.studioId || s.name === proj.studioName);
@@ -247,11 +280,12 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                     return (
                       <motion.div
                         key={proj.id}
-                        layout
-                        initial={rowMotionConfig.initial}
-                        animate={rowMotionConfig.animate}
-                        exit={rowMotionConfig.exit}
-                        transition={rowMotionConfig.transition}
+                        layout="position"
+                        custom={index}
+                        variants={rowVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
                         onClick={() => onSelectProject(proj)}
                         className="grid grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(140px,1.1fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(180px,1.3fr)_minmax(110px,0.9fr)_minmax(150px,auto)] items-center px-6 py-3.5 hover:bg-charcoal-800/60 transition-colors cursor-pointer group"
                       >

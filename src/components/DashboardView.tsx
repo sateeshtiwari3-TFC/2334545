@@ -28,6 +28,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import DashboardHeader from './dashboard/DashboardHeader';
+import DashboardReminderAlerts from './dashboard/DashboardReminderAlerts';
 import DashboardKpiGrid from './dashboard/DashboardKpiGrid';
 import DashboardLiveWorkload from './dashboard/DashboardLiveWorkload';
 import DashboardAlertsHub from './dashboard/DashboardAlertsHub';
@@ -66,6 +67,7 @@ interface DashboardViewProps {
   onTriggerWeeklyBackup?: () => void;
   onSnoozeWeeklyBackup?: (days?: number) => void;
   revisions?: Revision[] | any[];
+  onUpdateCalendarEvent?: (id: string, updates: Partial<CalendarEvent>) => Promise<void>;
 }
 
 export default function DashboardView({
@@ -88,7 +90,8 @@ export default function DashboardView({
   lastWeeklyBackupDate = null,
   onTriggerWeeklyBackup,
   onSnoozeWeeklyBackup,
-  revisions = []
+  revisions = [],
+  onUpdateCalendarEvent
 }: DashboardViewProps) {
   // Perspective Lens Mode (Desktop)
   const [perspectiveMode, setPerspectiveMode] = useState<'mission_control' | 'edit_suite' | 'financials' | 'priority_radar' | 'forecast'>('mission_control');
@@ -549,10 +552,10 @@ export default function DashboardView({
 
     return (
       <div 
-        className={`flex items-center gap-2 overflow-x-auto custom-scrollbar ${
+        className={`flex items-center gap-2.5 overflow-x-auto custom-scrollbar ${
           location === 'top' 
-            ? 'border-b border-luxury-green-800/30 pb-4' 
-            : 'border-t border-luxury-green-800/40 pt-6 mt-12 mb-4 justify-center bg-black/20 p-4 rounded-3xl backdrop-blur-sm'
+            ? 'border-b border-white/[0.08] pb-4' 
+            : 'border-t border-white/[0.08] pt-6 mt-12 mb-4 justify-center bg-black/40 p-3 rounded-3xl backdrop-blur-md border border-white/[0.08]'
         }`}
       >
         {/* Mission Control (All-in-One) */}
@@ -560,8 +563,8 @@ export default function DashboardView({
           onClick={() => handleSwitch('mission_control')}
           className={`flex items-center space-x-2 px-5 py-3 rounded-2xl text-xs font-mono font-bold transition-all cursor-pointer shrink-0 border ${
             perspectiveMode === 'mission_control'
-              ? 'bg-gradient-to-r from-luxury-green-800 to-luxury-green-700 border-gold-500/50 text-gold-300 shadow-xl shadow-gold-500/10'
-              : 'bg-charcoal-900/60 border-white/5 text-gray-400 hover:text-white hover:bg-charcoal-800/80'
+              ? 'bg-gradient-to-r from-gold-500/20 via-gold-500/10 to-transparent border-gold-500/60 text-gold-200 shadow-xl shadow-gold-500/10 ring-1 ring-gold-500/30'
+              : 'bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:text-white hover:bg-white/[0.07] hover:border-white/[0.16]'
           }`}
         >
           <Sparkles className="w-4 h-4 text-gold-400" />
@@ -573,13 +576,13 @@ export default function DashboardView({
           onClick={() => handleSwitch('edit_suite')}
           className={`flex items-center space-x-2 px-5 py-3 rounded-2xl text-xs font-mono font-bold transition-all cursor-pointer shrink-0 border ${
             perspectiveMode === 'edit_suite'
-              ? 'bg-gradient-to-r from-luxury-green-800 to-luxury-green-700 border-gold-500/50 text-gold-300 shadow-xl shadow-gold-500/10'
-              : 'bg-charcoal-900/60 border-white/5 text-gray-400 hover:text-white hover:bg-charcoal-800/80'
+              ? 'bg-gradient-to-r from-gold-500/20 via-gold-500/10 to-transparent border-gold-500/60 text-gold-200 shadow-xl shadow-gold-500/10 ring-1 ring-gold-500/30'
+              : 'bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:text-white hover:bg-white/[0.07] hover:border-white/[0.16]'
           }`}
         >
           <Film className="w-4 h-4 text-emerald-400" />
           <span>Edit Suite & Pipeline</span>
-          <span className="px-2 py-0.5 rounded-full bg-black/40 text-[10px] text-emerald-300 font-bold">
+          <span className="px-2 py-0.5 rounded-full bg-black/50 text-[10px] text-emerald-300 font-bold border border-emerald-500/30">
             {activeProjectsCount}
           </span>
         </button>
@@ -589,14 +592,14 @@ export default function DashboardView({
           onClick={() => handleSwitch('financials')}
           className={`flex items-center space-x-2 px-5 py-3 rounded-2xl text-xs font-mono font-bold transition-all cursor-pointer shrink-0 border ${
             perspectiveMode === 'financials'
-              ? 'bg-gradient-to-r from-luxury-green-800 to-luxury-green-700 border-gold-500/50 text-gold-300 shadow-xl shadow-gold-500/10'
-              : 'bg-charcoal-900/60 border-white/5 text-gray-400 hover:text-white hover:bg-charcoal-800/80'
+              ? 'bg-gradient-to-r from-gold-500/20 via-gold-500/10 to-transparent border-gold-500/60 text-gold-200 shadow-xl shadow-gold-500/10 ring-1 ring-gold-500/30'
+              : 'bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:text-white hover:bg-white/[0.07] hover:border-white/[0.16]'
           }`}
         >
           <IndianRupee className="w-4 h-4 text-gold-400" />
           <span>Cashflow & Receivables</span>
           {totalOutstandingBalance > 0 && (
-            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-[10px] text-amber-300 font-bold border border-amber-500/30">
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/25 text-[10px] text-amber-200 font-bold border border-amber-500/40">
               ₹{(totalOutstandingBalance / 1000).toFixed(0)}k Due
             </span>
           )}
@@ -607,8 +610,8 @@ export default function DashboardView({
           onClick={() => handleSwitch('priority_radar')}
           className={`flex items-center space-x-2 px-5 py-3 rounded-2xl text-xs font-mono font-bold transition-all cursor-pointer shrink-0 border ${
             perspectiveMode === 'priority_radar'
-              ? 'bg-gradient-to-r from-luxury-green-800 to-luxury-green-700 border-gold-500/50 text-gold-300 shadow-xl shadow-gold-500/10'
-              : 'bg-charcoal-900/60 border-white/5 text-gray-400 hover:text-white hover:bg-charcoal-800/80'
+              ? 'bg-gradient-to-r from-gold-500/20 via-gold-500/10 to-transparent border-gold-500/60 text-gold-200 shadow-xl shadow-gold-500/10 ring-1 ring-gold-500/30'
+              : 'bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:text-white hover:bg-white/[0.07] hover:border-white/[0.16]'
           }`}
         >
           <AlertTriangle className="w-4 h-4 text-rose-400" />
@@ -623,8 +626,8 @@ export default function DashboardView({
           onClick={() => handleSwitch('forecast')}
           className={`flex items-center space-x-2 px-5 py-3 rounded-2xl text-xs font-mono font-bold transition-all cursor-pointer shrink-0 border ${
             perspectiveMode === 'forecast'
-              ? 'bg-gradient-to-r from-luxury-green-800 to-luxury-green-700 border-gold-500/50 text-gold-300 shadow-xl shadow-gold-500/10'
-              : 'bg-charcoal-900/60 border-white/5 text-gray-400 hover:text-white hover:bg-charcoal-800/80'
+              ? 'bg-gradient-to-r from-gold-500/20 via-gold-500/10 to-transparent border-gold-500/60 text-gold-200 shadow-xl shadow-gold-500/10 ring-1 ring-gold-500/30'
+              : 'bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:text-white hover:bg-white/[0.07] hover:border-white/[0.16]'
           }`}
         >
           <TrendingUp className="w-4 h-4 text-sky-400" />
@@ -684,8 +687,8 @@ export default function DashboardView({
     ];
 
     return (
-      <div id="mobile-dashboard-tabbar" className="md:hidden sticky top-0 z-30 -mx-4 px-4 py-2.5 bg-charcoal-950/95 backdrop-blur-2xl border-b border-luxury-green-800/40 shadow-xl">
-        <div className="grid grid-cols-5 gap-1.5 p-1 bg-black/40 border border-luxury-green-900/50 rounded-2xl">
+      <div id="mobile-dashboard-tabbar" className="md:hidden sticky top-0 z-30 -mx-4 px-4 py-2.5 bg-charcoal-950/95 backdrop-blur-2xl border-b border-white/[0.08] shadow-xl">
+        <div className="grid grid-cols-5 gap-1.5 p-1 bg-black/50 border border-white/[0.08] rounded-2xl">
           {mobileTabs.map(tab => {
             const Icon = tab.icon;
             const isActive = mobileTab === tab.id;
@@ -701,18 +704,18 @@ export default function DashboardView({
                   }
                 }}
                 className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl text-center relative cursor-pointer active:scale-95 transition-all duration-200 touch-manipulation ${
-                  isActive ? 'text-white' : 'text-gray-400 hover:text-gray-200'
+                  isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 {isActive && (
                   <motion.div
                     layoutId="mobileDashboardActiveTabPill"
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                    className="absolute inset-0 bg-gradient-to-b from-luxury-green-800/90 to-luxury-green-950/90 border border-gold-500/50 rounded-xl shadow-md shadow-gold-500/10"
+                    className="absolute inset-0 bg-gradient-to-b from-gold-500/25 to-gold-500/10 border border-gold-500/60 rounded-xl shadow-md shadow-gold-500/10"
                   />
                 )}
                 <div className="relative z-10 flex items-center justify-center space-x-1">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-gold-300 scale-110' : 'text-gray-400'}`} />
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-gold-300 scale-110' : 'text-zinc-400'}`} />
                   {tab.badge && (
                     <span className={`px-1 py-0.2 rounded-full text-[9px] font-mono font-bold leading-none ${tab.badgeColor}`}>
                       {tab.badge}
@@ -720,7 +723,7 @@ export default function DashboardView({
                   )}
                 </div>
                 <span className={`relative z-10 text-[10px] font-sans font-bold tracking-tight mt-1 whitespace-nowrap ${
-                  isActive ? 'text-gold-300' : 'text-gray-400'
+                  isActive ? 'text-gold-300' : 'text-zinc-400'
                 }`}>
                   {tab.label}
                 </span>
@@ -751,6 +754,15 @@ export default function DashboardView({
         pendingStudiosWithBalanceCount={pendingStudiosWithBalanceCount}
         unpaidEditorsCount={unpaidEditorsCount}
         onSelectPerspective={handlePerspectiveOrMobileChange}
+      />
+
+      {/* ================= RED BLINKING CALENDAR REMINDERS ALERT BANNER ================= */}
+      <DashboardReminderAlerts
+        calendarEvents={calendarEvents}
+        projects={projects}
+        onNavigateTab={onNavigateTab}
+        onUpdateCalendarEvent={onUpdateCalendarEvent}
+        onOpenPaymentModal={() => openPaymentModal('studio')}
       />
 
       {/* ================= MOBILE VIEW: DEDICATED TABBED INTERFACE ================= */}

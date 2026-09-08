@@ -139,7 +139,18 @@ export default function IntakeTabCrew({
             <input 
               type="date" 
               value={shootDate} 
-              onChange={(e) => { setShootDate(e.target.value); onClearError(); }} 
+              onChange={(e) => { 
+                const newShoot = e.target.value;
+                setShootDate(newShoot); 
+                onClearError(); 
+                if (newShoot && !deliveryDate) {
+                  const s = new Date(newShoot);
+                  if (!isNaN(s.getTime())) {
+                    s.setDate(s.getDate() + 21);
+                    setDeliveryDate(s.toISOString().split('T')[0]);
+                  }
+                }
+              }} 
               onClick={(e) => { try { e.currentTarget.showPicker(); } catch (err) {} }}
               className="w-full bg-charcoal-900/80 border border-white/10 hover:border-gold-500/30 focus:border-gold-500/60 rounded-xl pl-11 pr-4 py-3 text-sm text-white focus:bg-charcoal-900 focus:outline-none cursor-pointer transition-colors font-mono" 
             />

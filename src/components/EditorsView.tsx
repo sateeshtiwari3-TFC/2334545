@@ -33,13 +33,18 @@ import {
   Laptop,
   Camera,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Play,
+  AlertTriangle,
+  Search,
+  ArrowRight,
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Editor, Project, PaymentHistory, Studio } from '../types';
 import EditorLoadIndicator, { calculateEditorLoad } from './EditorLoadIndicator';
 import EditorPdfExportModal from './EditorPdfExportModal';
-import EditorShowcaseCarousel from './EditorShowcaseCarousel';
 import EditorInvoicesHub from './EditorInvoicesHub';
 import QuickReassignModal from './QuickReassignModal';
 
@@ -57,6 +62,7 @@ interface EditorsViewProps {
   onLogPayment: (payment: Omit<PaymentHistory, 'id' | 'createdAt'>) => Promise<void>;
   onDeletePayment?: (id: string) => Promise<void>;
   onUpdateProject?: (id: string, updates: Partial<Project>) => Promise<void>;
+  onDeleteProject?: (id: string) => Promise<void>;
 }
 
 // Fallback high-contrast moody portraits matching the VELO editorial aesthetic
@@ -71,7 +77,7 @@ const CINEMATIC_EDITORIAL_PORTRAITS = [
   'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=1200'
 ];
 
-type ActiveSectionTab = 'overview' | 'deliveries' | 'portfolio' | 'invoices' | 'ledger' | 'contact';
+type ActiveSectionTab = 'overview' | 'deliveries' | 'running_projects' | 'roster' | 'invoices' | 'ledger' | 'contact';
 
 const EditorsView = React.memo(function EditorsView({
   editors,
@@ -86,7 +92,8 @@ const EditorsView = React.memo(function EditorsView({
   onDeleteEditor,
   onLogPayment,
   onDeletePayment,
-  onUpdateProject
+  onUpdateProject,
+  onDeleteProject
 }: EditorsViewProps) {
   // Determine user's active editor
   const loggedInEditor = useMemo(() => {
@@ -116,6 +123,9 @@ const EditorsView = React.memo(function EditorsView({
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<ActiveSectionTab>('overview');
 
+  // Editor Selector Dropdown Toggle State
+  const [isEditorDropdownOpen, setIsEditorDropdownOpen] = useState(false);
+
   // Modals & Drawers state
   const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
   const [editingEditor, setEditingEditor] = useState<Editor | null>(null);
@@ -126,6 +136,25 @@ const EditorsView = React.memo(function EditorsView({
   const [isReassignModalOpen, setIsReassignModalOpen] = useState(false);
   const [reassignSourceEditor, setReassignSourceEditor] = useState<Editor | null>(null);
   const [editorToDeleteId, setEditorToDeleteId] = useState<string | null>(null);
+
+  // Project Stage Reset Modal State
+  const [projectToReset, setProjectToReset] = useState<Project | null>(null);
+  const [isResettingProject, setIsResettingProject] = useState(false);
+
+  // Project Delete Modal State
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
+
+  // Quick Project Edit Modal State
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [isSavingProjectEdit, setIsSavingProjectEdit] = useState(false);
+  const [projectEditTitle, setProjectEditTitle] = useState('');
+  const [projectEditStudio, setProjectEditStudio] = useState('');
+  const [projectEditStatus, setProjectEditStatus] = useState<string>('editing');
+  const [projectEditPriority, setProjectEditPriority] = useState<string>('normal');
+  const [projectEditDeliveryDate, setProjectEditDeliveryDate] = useState('');
+  const [projectEditFee, setProjectEditFee] = useState<number>(0);
+  const [projectEditNotes, setProjectEditNotes] = useState('');
 
   // Payment logging state
   const [isLoggingPayment, setIsLoggingPayment] = useState(false);
@@ -176,8 +205,8 @@ const EditorsView = React.memo(function EditorsView({
       const img = new window.Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1600;
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 1000;
         let width = img.width;
         let height = img.height;
 
@@ -198,7 +227,7 @@ const EditorsView = React.memo(function EditorsView({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          const compressed = canvas.toDataURL('image/jpeg', 0.78);
           onSuccess(compressed);
         } else {
           onSuccess(rawDataUrl);
@@ -319,11 +348,82 @@ const EditorsView = React.memo(function EditorsView({
     if (!editorToDeleteId) return;
     try {
       const editorName = editors.find(e => e.id === editorToDeleteId)?.name || 'Editor';
+      const remaining = editors.filter(e => e.id !== editorToDeleteId);
       await onDeleteEditor(editorToDeleteId);
+      if (remaining.length > 0) {
+        setSelectedEditorId(remaining[0].id);
+      }
       setEditorToDeleteId(null);
       triggerToast('Editor Retired', `${editorName} removed from registry.`);
     } catch (err: any) {
       alert('Failed to delete editor: ' + (err?.message || String(err)));
+    }
+  };
+
+  // Project Stage Reset Handlers
+  const handleConfirmResetProject = async () => {
+    if (!projectToReset || !onUpdateProject) return;
+    setIsResettingProject(true);
+    try {
+      await onUpdateProject(projectToReset.id, { status: 'data_received' });
+      triggerToast('Workflow Stage Reset', `"${projectToReset.coupleName || projectToReset.projectName}" reset to Footage Ingest.`);
+      setProjectToReset(null);
+    } catch (err: any) {
+      alert('Failed to reset project stage: ' + (err?.message || String(err)));
+    } finally {
+      setIsResettingProject(false);
+    }
+  };
+
+  // Project Delete Handlers
+  const handleConfirmDeleteProject = async () => {
+    if (!projectToDelete || !onDeleteProject) return;
+    setIsDeletingProject(true);
+    try {
+      await onDeleteProject(projectToDelete.id);
+      triggerToast('Project Archived', `"${projectToDelete.coupleName || projectToDelete.projectName}" moved to Recycle Bin.`);
+      setProjectToDelete(null);
+    } catch (err: any) {
+      alert('Failed to delete project: ' + (err?.message || String(err)));
+    } finally {
+      setIsDeletingProject(false);
+    }
+  };
+
+  // Quick Project Edit Handlers
+  const handleOpenEditProject = (proj: Project, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingProject(proj);
+    setProjectEditTitle(proj.coupleName || proj.projectName || '');
+    setProjectEditStudio(proj.studioName || '');
+    setProjectEditStatus(proj.status || 'editing');
+    setProjectEditPriority(proj.priority || 'normal');
+    setProjectEditDeliveryDate(proj.deliveryDate || '');
+    setProjectEditFee(proj.editorPayment || 0);
+    setProjectEditNotes(proj.notes || '');
+  };
+
+  const handleSaveProjectEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject || !onUpdateProject) return;
+    setIsSavingProjectEdit(true);
+    try {
+      await onUpdateProject(editingProject.id, {
+        coupleName: projectEditTitle.trim(),
+        projectName: projectEditTitle.trim(),
+        studioName: projectEditStudio.trim(),
+        status: projectEditStatus as any,
+        priority: projectEditPriority as any,
+        deliveryDate: projectEditDeliveryDate,
+        editorPayment: Number(projectEditFee),
+        notes: projectEditNotes.trim()
+      });
+      triggerToast('Project Updated', `Specifications updated successfully.`);
+      setEditingProject(null);
+    } catch (err: any) {
+      alert('Failed to save project updates: ' + (err?.message || String(err)));
+    } finally {
+      setIsSavingProjectEdit(false);
     }
   };
 
@@ -359,6 +459,107 @@ const EditorsView = React.memo(function EditorsView({
   }, [editorProjects]);
 
   const activeCutsCount = editorProjects.length - completedProjectsCount;
+
+  // Currently Running in-progress projects (not delivered or closed)
+  const runningProjects = useMemo(() => {
+    return editorProjects.filter(p => p.status !== 'delivered' && p.status !== 'closed');
+  }, [editorProjects]);
+
+  const urgentRunningCount = useMemo(() => {
+    return runningProjects.filter(p => p.priority === 'urgent' || p.priority === 'high').length;
+  }, [runningProjects]);
+
+  const runningEarnings = useMemo(() => {
+    if (!activeEditor) return 0;
+    return runningProjects.reduce((sum, p) => {
+      if (p.isSplitProject) {
+        if (p.assignedEditorId === activeEditor.id) return sum + (p.firstEditorShare || 0);
+        if (p.secondEditorId === activeEditor.id) return sum + (p.secondEditorShare || 0);
+      }
+      return sum + (p.editorPayment || 0);
+    }, 0);
+  }, [runningProjects, activeEditor]);
+
+  // Running projects filter & search state
+  const [runningFilterStatus, setRunningFilterStatus] = useState<string>('all');
+  const [runningSearchQuery, setRunningSearchQuery] = useState<string>('');
+
+  const filteredRunningProjects = useMemo(() => {
+    return runningProjects.filter(p => {
+      if (runningFilterStatus !== 'all' && p.status !== runningFilterStatus) {
+        return false;
+      }
+      if (runningSearchQuery.trim()) {
+        const q = runningSearchQuery.toLowerCase();
+        const couple = (p.coupleName || `${p.brideName || ''} ${p.groomName || ''}`).toLowerCase();
+        const studio = (p.studioName || '').toLowerCase();
+        const event = (p.eventType || '').toLowerCase();
+        const id = (p.id || '').toLowerCase();
+        if (!couple.includes(q) && !studio.includes(q) && !event.includes(q) && !id.includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [runningProjects, runningFilterStatus, runningSearchQuery]);
+
+  // Delivery deadline countdown helper
+  const getDeliveryDaysInfo = (deliveryDateStr?: string) => {
+    if (!deliveryDateStr) return { label: 'Flexible Deadline', urgency: 'normal' as const, days: null };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(deliveryDateStr);
+    target.setHours(0, 0, 0, 0);
+    const diffTime = target.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) {
+      return { label: `Overdue by ${Math.abs(diffDays)}d`, urgency: 'overdue' as const, days: diffDays };
+    }
+    if (diffDays === 0) {
+      return { label: 'Due Today', urgency: 'critical' as const, days: 0 };
+    }
+    if (diffDays === 1) {
+      return { label: 'Due Tomorrow', urgency: 'critical' as const, days: 1 };
+    }
+    if (diffDays <= 3) {
+      return { label: `${diffDays} days left`, urgency: 'warning' as const, days: diffDays };
+    }
+    return { label: `${diffDays} days left`, urgency: 'normal' as const, days: diffDays };
+  };
+
+  // Workflow pipeline step helper
+  const getProjectStageInfo = (status: string) => {
+    switch (status) {
+      case 'data_received':
+        return { step: 1, label: 'Footage Ingest', progress: 15, color: 'text-zinc-400', badgeBg: 'bg-zinc-800 text-zinc-300' };
+      case 'assigned':
+        return { step: 2, label: 'Story & Rough Cut', progress: 30, color: 'text-blue-400', badgeBg: 'bg-blue-500/10 text-blue-400 border border-blue-500/30' };
+      case 'editing':
+        return { step: 3, label: 'In Edit Suite', progress: 55, color: 'text-amber-400', badgeBg: 'bg-amber-500/10 text-amber-400 border border-amber-500/30' };
+      case 'review':
+        return { step: 4, label: 'Studio Review', progress: 75, color: 'text-purple-400', badgeBg: 'bg-purple-500/10 text-purple-400 border border-purple-500/30' };
+      case 'revision':
+        return { step: 4, label: 'Client Revision', progress: 80, color: 'text-rose-400', badgeBg: 'bg-rose-500/10 text-rose-400 border border-rose-500/30' };
+      case 'rendering':
+        return { step: 5, label: '4K Color & Render', progress: 92, color: 'text-cyan-400', badgeBg: 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30' };
+      case 'delivered':
+        return { step: 5, label: 'Delivered', progress: 100, color: 'text-emerald-400', badgeBg: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' };
+      default:
+        return { step: 2, label: 'In Production', progress: 40, color: 'text-zinc-300', badgeBg: 'bg-zinc-800 text-zinc-300' };
+    }
+  };
+
+  // Quick project status updater
+  const handleQuickStatusChange = async (projectId: string, newStatus: string) => {
+    if (!onUpdateProject) return;
+    try {
+      await onUpdateProject(projectId, { status: newStatus as any });
+      triggerToast('Pipeline Advanced', `Project moved to ${newStatus.replace('_', ' ').toUpperCase()}.`);
+    } catch (err: any) {
+      alert('Failed to update status: ' + (err?.message || String(err)));
+    }
+  };
 
   const totalEarnings = useMemo(() => {
     if (!activeEditor) return 0;
@@ -478,55 +679,84 @@ const EditorsView = React.memo(function EditorsView({
 
           {/* Admin Editor Selector Switcher */}
           {userRole === 'admin' && (
-            <div className="relative group ml-3 pl-3 border-l border-zinc-800">
-              <div className="flex items-center space-x-1.5 text-xs text-zinc-300 bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800 rounded-full px-3 py-1.5 transition-colors cursor-pointer">
+            <div className="relative ml-3 pl-3 border-l border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setIsEditorDropdownOpen(prev => !prev)}
+                className="flex items-center space-x-1.5 text-xs text-zinc-300 bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800 rounded-full px-3 py-1.5 transition-colors cursor-pointer"
+              >
                 <span className="text-[10px] font-mono text-zinc-500 uppercase mr-1">Editor:</span>
                 <span className="font-semibold text-white truncate max-w-[130px]">{activeEditor?.name}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
-              </div>
+                <ChevronDown className={`w-3.5 h-3.5 text-zinc-400 transition-transform ${isEditorDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
 
               {/* Dropdown Menu */}
-              <div className="absolute left-3 top-full mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl py-1.5 hidden group-hover:block z-50 backdrop-blur-xl">
-                <div className="px-3 py-1.5 text-[10px] font-mono text-zinc-500 uppercase border-b border-zinc-900">
-                  Switch Active Editor ({editors.length})
-                </div>
-                <div className="max-h-56 overflow-y-auto py-1">
-                  {editors.map(ed => (
-                    <button
-                      key={ed.id}
-                      type="button"
-                      onClick={() => setSelectedEditorId(ed.id)}
-                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-zinc-900 transition-colors ${
-                        activeEditor?.id === ed.id ? 'text-white font-bold bg-zinc-900/50' : 'text-zinc-400'
-                      }`}
-                    >
-                      <span className="truncate">{ed.name}</span>
-                      {activeEditor?.id === ed.id && <Check className="w-3.5 h-3.5 text-white" />}
-                    </button>
-                  ))}
-                </div>
-                <div className="p-1.5 border-t border-zinc-900">
-                  <button
-                    type="button"
-                    onClick={openCreateModal}
-                    className="w-full text-center py-1.5 text-[11px] font-mono text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-lg flex items-center justify-center space-x-1 transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Add New Editor</span>
-                  </button>
-                </div>
-              </div>
+              {isEditorDropdownOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setIsEditorDropdownOpen(false)} 
+                  />
+                  <div className="absolute left-3 top-full mt-2 w-64 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl py-1.5 z-50 backdrop-blur-xl">
+                    <div className="px-3 py-1.5 text-[10px] font-mono text-zinc-500 uppercase border-b border-zinc-900 flex justify-between items-center">
+                      <span>Switch Active Editor ({editors.length})</span>
+                      <button 
+                        type="button" 
+                        onClick={() => { setActiveTab('roster'); setIsEditorDropdownOpen(false); }}
+                        className="text-white hover:underline text-[9px]"
+                      >
+                        View All
+                      </button>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto py-1">
+                      {editors.map(ed => (
+                        <button
+                          key={ed.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedEditorId(ed.id);
+                            setIsEditorDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-zinc-900 transition-colors ${
+                            activeEditor?.id === ed.id ? 'text-white font-bold bg-zinc-900/50' : 'text-zinc-400'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2 truncate">
+                            <span className="w-2 h-2 rounded-full bg-zinc-700 shrink-0" />
+                            <span className="truncate">{ed.name}</span>
+                          </div>
+                          {activeEditor?.id === ed.id && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="p-1.5 border-t border-zinc-900">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          openCreateModal();
+                          setIsEditorDropdownOpen(false);
+                        }}
+                        className="w-full text-center py-1.5 text-[11px] font-mono text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-lg flex items-center justify-center space-x-1 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Add New Editor</span>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
 
         {/* Right Navigation Menu */}
         <div className="flex flex-wrap items-center gap-1 sm:gap-2">
-          {(['overview', 'deliveries', 'portfolio', 'invoices', 'ledger', 'contact'] as ActiveSectionTab[]).map(tabKey => {
+          {(['overview', 'running_projects', 'deliveries', 'roster', 'invoices', 'ledger', 'contact'] as ActiveSectionTab[]).map(tabKey => {
             const labels: Record<ActiveSectionTab, string> = {
               overview: 'Home',
+              running_projects: 'Running Projects',
               deliveries: 'Deliveries',
-              portfolio: 'Portfolio',
+              roster: 'All Editors',
               invoices: 'Invoices',
               ledger: 'Ledger',
               contact: 'Contact'
@@ -626,13 +856,19 @@ const EditorsView = React.memo(function EditorsView({
               transition={{ duration: 0.5, delay: 0.3 }}
               className="flex flex-wrap items-center gap-3 pt-2"
             >
-              {/* White Solid Pill Button */}
+              {/* White Solid Pill Button - Current Running Projects */}
               <button
                 type="button"
-                onClick={() => setActiveTab('portfolio')}
-                className="px-8 py-3 rounded-full bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-zinc-200 transition-all duration-200 hover:scale-[1.03] active:scale-[0.97] shadow-xl cursor-pointer"
+                onClick={() => setActiveTab('running_projects')}
+                className="px-7 py-3 rounded-full bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-zinc-200 transition-all duration-200 hover:scale-[1.03] active:scale-[0.97] shadow-xl cursor-pointer flex items-center space-x-2"
               >
-                Portfolio
+                <span className={`w-2 h-2 rounded-full ${runningProjects.length > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-400'}`} />
+                <span>Running Projects</span>
+                {runningProjects.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-black text-white text-[10px] font-mono font-bold">
+                    {runningProjects.length}
+                  </span>
+                )}
               </button>
 
               {/* Dark Outlined Pill Button */}
@@ -655,6 +891,32 @@ const EditorsView = React.memo(function EditorsView({
                 <span>Change Photo</span>
               </button>
 
+              {/* Direct Edit Editor Profile Button */}
+              {userRole === 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => openEditModal(activeEditor)}
+                  className="px-5 py-3 rounded-full bg-zinc-950 border border-zinc-800 hover:border-zinc-400 text-zinc-200 hover:text-white font-mono text-xs transition-all cursor-pointer flex items-center space-x-2 hover:scale-[1.03] active:scale-[0.97]"
+                  title="Edit Editor Profile Specifications"
+                >
+                  <Edit className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Edit Editor</span>
+                </button>
+              )}
+
+              {/* Direct Delete Editor Profile Button */}
+              {userRole === 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => setEditorToDeleteId(activeEditor.id)}
+                  className="px-5 py-3 rounded-full bg-zinc-950 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 font-mono text-xs transition-all cursor-pointer flex items-center space-x-2 hover:scale-[1.03] active:scale-[0.97]"
+                  title="Retire / Delete Editor Profile"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                  <span>Delete Editor</span>
+                </button>
+              )}
+
               {/* Direct Invoices Pill */}
               <button
                 type="button"
@@ -676,11 +938,11 @@ const EditorsView = React.memo(function EditorsView({
             >
               <button
                 type="button"
-                onClick={() => setActiveTab('portfolio')}
+                onClick={() => setActiveTab('running_projects')}
                 className="w-8 h-8 rounded-full border border-zinc-800 hover:border-zinc-500 hover:text-white flex items-center justify-center transition-all hover:scale-110 cursor-pointer"
-                title="Cinematic Showcase"
+                title="Current Running Projects"
               >
-                <Globe className="w-3.5 h-3.5" />
+                <Play className="w-3.5 h-3.5" />
               </button>
 
               <a
@@ -905,26 +1167,130 @@ const EditorsView = React.memo(function EditorsView({
               )}
             </div>
 
-            {/* Showcase Film Frames Carousel Preview */}
+            {/* Current Running Projects Spotlight (Replacing old static showcase) */}
             <div className="space-y-4 pt-4">
               <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
-                <h3 className="text-xs font-mono font-bold tracking-[0.2em] text-zinc-400 uppercase">
-                  PORTFOLIO & 4K CINEMATIC CUTS
-                </h3>
+                <div className="flex items-center space-x-2.5">
+                  <span className={`w-2.5 h-2.5 rounded-full ${runningProjects.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
+                  <h3 className="text-xs font-mono font-bold tracking-[0.2em] text-white uppercase">
+                    CURRENT RUNNING PROJECTS ({runningProjects.length})
+                  </h3>
+                  {urgentRunningCount > 0 && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                      {urgentRunningCount} Urgent
+                    </span>
+                  )}
+                </div>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('portfolio')}
-                  className="text-xs font-mono text-zinc-400 hover:text-white uppercase transition-colors"
+                  onClick={() => setActiveTab('running_projects')}
+                  className="text-xs font-mono text-zinc-400 hover:text-white uppercase transition-colors flex items-center space-x-1 cursor-pointer"
                 >
-                  Full Showcase →
+                  <span>View Full Timeline →</span>
                 </button>
               </div>
 
-              <EditorShowcaseCarousel
-                editor={activeEditor}
-                projects={projects}
-                compact={false}
-              />
+              {runningProjects.length === 0 ? (
+                <div className="p-8 text-center bg-zinc-950/60 border border-dashed border-zinc-900 rounded-2xl space-y-2">
+                  <p className="text-sm text-zinc-300 font-medium">All assigned projects are completed and delivered.</p>
+                  <p className="text-xs text-zinc-500 font-mono">No active editing cuts currently in progress for {activeEditor.name}.</p>
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('deliveries')}
+                      className="text-xs font-mono text-white underline hover:text-zinc-300 cursor-pointer"
+                    >
+                      View Past Completed Deliveries ({completedProjectsCount})
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {runningProjects.map(proj => {
+                    const stage = getProjectStageInfo(proj.status);
+                    const deadline = getDeliveryDaysInfo(proj.deliveryDate);
+                    const editorFee = proj.isSplitProject ? (proj.firstEditorShare || 0) : proj.editorPayment;
+
+                    return (
+                      <div
+                        key={proj.id}
+                        className="p-5 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 rounded-2xl transition-all space-y-4 flex flex-col justify-between group shadow-xl relative overflow-hidden"
+                      >
+                        {/* Status bar accent on top edge */}
+                        <div 
+                          className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-white via-zinc-400 to-zinc-700" 
+                          style={{ width: `${stage.progress}%` }} 
+                        />
+
+                        <div className="space-y-3">
+                          {/* Header tags: Priority & Stage */}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-[10px] font-mono uppercase px-2.5 py-1 rounded-full font-semibold ${stage.badgeBg}`}>
+                              {stage.label}
+                            </span>
+
+                            {/* Deadline Countdown Pill */}
+                            <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full flex items-center space-x-1 ${
+                              deadline.urgency === 'overdue'
+                                ? 'bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse'
+                                : deadline.urgency === 'critical'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                : deadline.urgency === 'warning'
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
+                            }`}>
+                              <Clock className="w-3 h-3" />
+                              <span>{deadline.label}</span>
+                            </span>
+                          </div>
+
+                          {/* Couple & Studio Info */}
+                          <div>
+                            <span className="text-[10px] font-mono text-zinc-500">{proj.id} • {proj.eventType || 'Wedding Film'}</span>
+                            <h4 className="text-base font-bold text-white font-display mt-0.5 tracking-tight group-hover:text-zinc-200 transition-colors">
+                              {proj.coupleName || `${proj.brideName || 'Bride'} & ${proj.groomName || 'Groom'}`}
+                            </h4>
+                            <p className="text-xs text-zinc-400 mt-0.5">{proj.studioName || 'Direct Studio'} {proj.venue ? `• ${proj.venue}` : ''}</p>
+                          </div>
+
+                          {/* 5-Step Pipeline Progress Indicator */}
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex justify-between items-center text-[10px] font-mono text-zinc-400">
+                              <span>Pipeline: <strong className="text-white">{stage.label}</strong></span>
+                              <span className="text-zinc-500">{stage.progress}%</span>
+                            </div>
+                            <div className="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-white transition-all duration-500"
+                                style={{ width: `${stage.progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Bottom Actions & Fee */}
+                        <div className="pt-3 border-t border-zinc-900 flex items-center justify-between text-xs font-mono">
+                          <div>
+                            <span className="text-[10px] text-zinc-500 block">Contract Share</span>
+                            <span className="text-white font-bold">₹{editorFee.toLocaleString('en-IN')}</span>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('running_projects')}
+                              className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-white hover:text-black text-zinc-300 text-[11px] font-mono transition-all cursor-pointer flex items-center space-x-1"
+                            >
+                              <span>Manage</span>
+                              <ArrowRight className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -1003,6 +1369,32 @@ const EditorsView = React.memo(function EditorsView({
                         <span className="text-[10px] text-zinc-500 font-mono">Editor Contract Fee</span>
                       </div>
 
+                      {/* Reset Stage to Ingest */}
+                      {onUpdateProject && (
+                        <button
+                          type="button"
+                          onClick={() => setProjectToReset(proj)}
+                          className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-sky-500/20 border border-zinc-700 hover:border-sky-500/40 text-zinc-300 hover:text-sky-300 text-xs font-mono flex items-center space-x-1 transition-all cursor-pointer"
+                          title="Reset Workflow Stage to Ingest (data_received)"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Reset</span>
+                        </button>
+                      )}
+
+                      {/* Edit Project */}
+                      {onUpdateProject && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditProject(proj)}
+                          className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white text-xs font-mono flex items-center space-x-1 transition-all cursor-pointer"
+                          title="Edit Project Specifications"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={(e) => handleOpenPdfModal(activeEditor, 'invoice', e, proj.id)}
@@ -1012,6 +1404,18 @@ const EditorsView = React.memo(function EditorsView({
                         <Receipt className="w-3.5 h-3.5" />
                         <span>Work Invoice</span>
                       </button>
+
+                      {/* Delete Project */}
+                      {userRole === 'admin' && onDeleteProject && (
+                        <button
+                          type="button"
+                          onClick={() => setProjectToDelete(proj)}
+                          className="p-1.5 rounded-xl bg-zinc-900 hover:bg-red-500/20 border border-zinc-700 hover:border-red-500/40 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
+                          title="Archive / Delete Project"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1020,28 +1424,336 @@ const EditorsView = React.memo(function EditorsView({
           </motion.div>
         )}
 
-        {/* Tab 3: PORTFOLIO & 4K MASTER SHOWCASE */}
-        {activeTab === 'portfolio' && activeEditor && (
+        {/* Tab 3: CURRENT RUNNING PROJECTS (Replaces old Master Reel & Showcase) */}
+        {activeTab === 'running_projects' && activeEditor && (
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="space-y-6"
+            className="space-y-8"
           >
-            <div className="border-b border-zinc-900 pb-4">
-              <h3 className="text-lg font-bold font-display tracking-tight text-white uppercase">
-                {activeEditor.name}’s Master Reel & Showcase
-              </h3>
-              <p className="text-xs text-zinc-400 mt-0.5 font-mono">
-                Curated 4K wedding films, color grading grades, cinematic teasers, and drone highlights.
-              </p>
+            {/* Header & Section Title */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-zinc-900 pb-6">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-[10px] font-mono tracking-[0.25em] text-zinc-500 uppercase">ACTIVE PRODUCTION PIPELINE</span>
+                  <span className={`w-2 h-2 rounded-full ${runningProjects.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
+                </div>
+                <h3 className="text-2xl font-bold font-display tracking-tight text-white uppercase mt-1">
+                  {activeEditor.name}’s Current Running Projects
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1 font-mono">
+                  Live cutting suites, real-time stage progression, client revisions, and delivery deadlines.
+                </p>
+              </div>
+
+              {/* Summary KPIs */}
+              <div className="flex items-center gap-3">
+                <div className="px-4 py-2 bg-zinc-950 border border-zinc-800 rounded-2xl text-right">
+                  <span className="text-[10px] font-mono text-zinc-500 uppercase block">Active In Progress</span>
+                  <span className="text-lg font-bold font-mono text-white">{runningProjects.length} Projects</span>
+                </div>
+                <div className="px-4 py-2 bg-zinc-950 border border-zinc-800 rounded-2xl text-right">
+                  <span className="text-[10px] font-mono text-zinc-500 uppercase block">Pipeline Value</span>
+                  <span className="text-lg font-bold font-mono text-emerald-400">₹{runningEarnings.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
             </div>
 
-            <EditorShowcaseCarousel
-              editor={activeEditor}
-              projects={projects}
-              compact={false}
-            />
+            {/* Filter & Search Bar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-zinc-950/90 border border-zinc-900 p-3 rounded-2xl">
+              {/* Status Filter Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-none">
+                {[
+                  { id: 'all', label: `All Running (${runningProjects.length})` },
+                  { id: 'editing', label: 'In Edit Suite' },
+                  { id: 'review', label: 'Under Review' },
+                  { id: 'revision', label: 'In Revision' },
+                  { id: 'rendering', label: 'Rendering' },
+                  { id: 'assigned', label: 'Assigned' },
+                  { id: 'data_received', label: 'Ingest' }
+                ].map(chip => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => setRunningFilterStatus(chip.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-mono whitespace-nowrap transition-all cursor-pointer ${
+                      runningFilterStatus === chip.id
+                        ? 'bg-white text-black font-bold shadow'
+                        : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Box & Reset Filters */}
+              <div className="flex items-center space-x-2 w-full sm:w-auto">
+                {(runningFilterStatus !== 'all' || runningSearchQuery.trim() !== '') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRunningFilterStatus('all');
+                      setRunningSearchQuery('');
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white text-xs font-mono flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0"
+                    title="Reset All Filters and Search"
+                  >
+                    <RotateCcw className="w-3 h-3 text-zinc-400" />
+                    <span>Reset Filters</span>
+                  </button>
+                )}
+
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                  <input
+                    type="text"
+                    value={runningSearchQuery}
+                    onChange={(e) => setRunningSearchQuery(e.target.value)}
+                    placeholder="Search couple, studio..."
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-white transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Running Projects Grid / List */}
+            {filteredRunningProjects.length === 0 ? (
+              <div className="py-16 text-center bg-zinc-950/40 border border-dashed border-zinc-900 rounded-3xl space-y-3">
+                <div className="w-12 h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-500">
+                  <Play className="w-5 h-5" />
+                </div>
+                <h4 className="text-base font-bold text-white font-display">
+                  {runningProjects.length === 0 ? 'No Current Running Projects' : 'No Projects Match Filter'}
+                </h4>
+                <p className="text-xs text-zinc-400 max-w-md mx-auto font-mono">
+                  {runningProjects.length === 0
+                    ? `All assigned productions for ${activeEditor.name} have been delivered and completed. New assignments will appear here.`
+                    : 'Try clearing the search filter or switching status tabs above.'}
+                </p>
+                {runningProjects.length === 0 && (
+                  <div className="pt-2 flex justify-center space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('deliveries')}
+                      className="px-5 py-2 rounded-full bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-xs font-mono text-zinc-200"
+                    >
+                      View Past Deliveries ({completedProjectsCount})
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {filteredRunningProjects.map(proj => {
+                  const stage = getProjectStageInfo(proj.status);
+                  const deadline = getDeliveryDaysInfo(proj.deliveryDate);
+                  const editorFee = proj.isSplitProject ? (proj.firstEditorShare || 0) : proj.editorPayment;
+
+                  return (
+                    <div
+                      key={proj.id}
+                      className="p-6 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 rounded-3xl space-y-5 transition-all shadow-2xl relative overflow-hidden flex flex-col justify-between"
+                    >
+                      {/* Top Accent Gradient Bar */}
+                      <div 
+                        className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-white via-zinc-400 to-zinc-700"
+                        style={{ width: `${stage.progress}%` }}
+                      />
+
+                      <div className="space-y-4">
+                        {/* Top Metadata Row: ID, Status, Deadline */}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-[11px] font-mono text-zinc-500">{proj.id}</span>
+                            <span className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full font-semibold ${stage.badgeBg}`}>
+                              {stage.label}
+                            </span>
+                            {proj.priority === 'urgent' && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse font-bold">
+                                Urgent
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Deadline Tag */}
+                          <div className={`px-3 py-1 rounded-full text-xs font-mono flex items-center space-x-1.5 ${
+                            deadline.urgency === 'overdue'
+                              ? 'bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse'
+                              : deadline.urgency === 'critical'
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              : deadline.urgency === 'warning'
+                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
+                          }`}>
+                            <Clock className="w-3.5 h-3.5" />
+                            <span className="font-semibold">{deadline.label}</span>
+                            {proj.deliveryDate && (
+                              <span className="text-[10px] text-zinc-500 hidden sm:inline">({proj.deliveryDate})</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Project Title & Studio */}
+                        <div>
+                          <div className="text-xs font-mono text-zinc-400">{proj.eventType || 'Wedding'} • {proj.studioName || 'Studio Production'}</div>
+                          <h4 className="text-xl font-bold font-display text-white mt-1 tracking-tight">
+                            {proj.coupleName || `${proj.brideName || 'Bride'} & ${proj.groomName || 'Groom'}`}
+                          </h4>
+                          {proj.venue && (
+                            <p className="text-xs text-zinc-400 mt-1">📍 {proj.venue}</p>
+                          )}
+                        </div>
+
+                        {/* Interactive Workflow Progress Timeline (5 Stages) */}
+                        <div className="p-4 bg-zinc-900/60 border border-zinc-800/80 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between text-xs font-mono">
+                            <span className="text-zinc-400">Current Phase: <strong className="text-white">{stage.label}</strong></span>
+                            <span className="font-bold text-white">{stage.progress}%</span>
+                          </div>
+                          
+                          {/* Segmented Pipeline Bar */}
+                          <div className="grid grid-cols-5 gap-1 pt-1">
+                            {[
+                              { idx: 1, title: '1. Ingest' },
+                              { idx: 2, title: '2. Story Cut' },
+                              { idx: 3, title: '3. Picture Lock' },
+                              { idx: 4, title: '4. Review/Revs' },
+                              { idx: 5, title: '5. 4K Render' }
+                            ].map(step => (
+                              <div key={step.idx} className="space-y-1">
+                                <div className={`h-1.5 rounded-full ${step.idx <= stage.step ? 'bg-white' : 'bg-zinc-800'}`} />
+                                <span className={`text-[9px] font-mono block truncate ${step.idx <= stage.step ? 'text-zinc-300 font-semibold' : 'text-zinc-600'}`}>
+                                  {step.title}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Quick Notes / Tags if available */}
+                        {(proj.notes || (proj.tags && proj.tags.length > 0)) && (
+                          <div className="text-xs text-zinc-400 bg-zinc-900/40 p-3 rounded-xl border border-zinc-900 space-y-1.5">
+                            {proj.tags && proj.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {proj.tags.map((t, idx) => (
+                                  <span key={idx} className="text-[9px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
+                                    #{t}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {proj.notes && (
+                              <p className="text-[11px] text-zinc-400 italic line-clamp-2">
+                                "{proj.notes}"
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bottom Controls Bar: Quick Status Advance & Actions */}
+                      <div className="pt-4 border-t border-zinc-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
+                        <div>
+                          <span className="text-[10px] text-zinc-500 block uppercase">Contract Share</span>
+                          <span className="text-base font-bold text-white">₹{editorFee.toLocaleString('en-IN')}</span>
+                          {proj.isSplitProject && (
+                            <span className="text-[10px] text-amber-400 block">Co-Edited Project</span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Quick Status Advance Dropdown */}
+                          {onUpdateProject && (
+                            <div className="relative inline-block">
+                              <select
+                                value={proj.status}
+                                onChange={(e) => handleQuickStatusChange(proj.id, e.target.value)}
+                                className="bg-zinc-900 border border-zinc-700 hover:border-zinc-500 rounded-xl px-3 py-1.5 text-xs font-mono text-zinc-200 cursor-pointer focus:outline-none focus:border-white transition-colors"
+                                title="Update Live Production Status"
+                              >
+                                <option value="data_received">Status: Ingest</option>
+                                <option value="assigned">Status: Assigned</option>
+                                <option value="editing">Status: Editing</option>
+                                <option value="review">Status: Review</option>
+                                <option value="revision">Status: Revision</option>
+                                <option value="rendering">Status: Rendering</option>
+                                <option value="delivered">Status: Delivered (Complete)</option>
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Reset Workflow Stage to Ingest */}
+                          {onUpdateProject && (
+                            <button
+                              type="button"
+                              onClick={() => setProjectToReset(proj)}
+                              className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-sky-500/20 border border-zinc-700 hover:border-sky-500/40 text-zinc-300 hover:text-sky-300 text-xs font-mono flex items-center space-x-1 transition-all cursor-pointer"
+                              title="Reset Workflow Stage to Ingest (data_received)"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Reset</span>
+                            </button>
+                          )}
+
+                          {/* Edit Project Specifications */}
+                          {onUpdateProject && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditProject(proj)}
+                              className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white text-xs font-mono flex items-center space-x-1 transition-all cursor-pointer"
+                              title="Edit Project Specifications"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+                          )}
+
+                          {/* Work Invoice 1-Click Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenPdfModal(activeEditor, 'invoice', e, proj.id)}
+                            className="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white text-xs font-mono flex items-center space-x-1.5 transition-all cursor-pointer"
+                            title="Generate Single Work Invoice PDF"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            <span>Invoice</span>
+                          </button>
+
+                          {/* Reassign Button for Admin */}
+                          {userRole === 'admin' && onUpdateProject && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReassignSourceEditor(activeEditor);
+                                setIsReassignModalOpen(true);
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white text-xs font-mono transition-colors"
+                              title="Reassign to Another Editor"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* Delete / Archive Project Button */}
+                          {userRole === 'admin' && onDeleteProject && (
+                            <button
+                              type="button"
+                              onClick={() => setProjectToDelete(proj)}
+                              className="p-1.5 rounded-xl bg-zinc-900 hover:bg-red-500/20 border border-zinc-700 hover:border-red-500/40 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
+                              title="Archive / Delete Project"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -1378,6 +2090,170 @@ const EditorsView = React.memo(function EditorsView({
             </div>
           </motion.div>
         )}
+
+        {/* Tab 6: ALL EDITORS ROSTER & TEAM DIRECTORY */}
+        {activeTab === 'roster' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-900 pb-4">
+              <div>
+                <h3 className="text-xl font-bold font-display tracking-tight text-white uppercase">
+                  All Editors & Post-Production Roster
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5 font-mono">
+                  {editors.length} registered film editors • Switch active workspace, modify profiles, update photos, or assign projects.
+                </p>
+              </div>
+
+              {userRole === 'admin' && (
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="px-5 py-2.5 rounded-full bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-zinc-200 transition-all cursor-pointer flex items-center space-x-1.5 shadow-lg"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add New Editor</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {editors.map(ed => {
+                const edProjects = projects.filter(
+                  p => p.assignedEditorId === ed.id || (p.isSplitProject && p.secondEditorId === ed.id)
+                );
+                const edRunning = edProjects.filter(
+                  p => p.status !== 'delivered' && p.status !== 'closed'
+                );
+                const edCompleted = edProjects.filter(
+                  p => p.status === 'delivered' || p.status === 'closed'
+                );
+                const isCurrent = activeEditor?.id === ed.id;
+
+                return (
+                  <div
+                    key={ed.id}
+                    className={`p-6 bg-zinc-950 border rounded-3xl space-y-5 transition-all relative overflow-hidden flex flex-col justify-between ${
+                      isCurrent ? 'border-white ring-1 ring-white/20' : 'border-zinc-900 hover:border-zinc-800'
+                    }`}
+                  >
+                    <div className="space-y-4">
+                      {/* Top Bar: Photo & Meta */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="relative group">
+                          <img
+                            src={ed.photo || CINEMATIC_EDITORIAL_PORTRAITS[0]}
+                            alt={ed.name}
+                            className="w-16 h-16 rounded-2xl object-cover border border-zinc-800"
+                            referrerPolicy="no-referrer"
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => openPhotoChangeModal(ed, e)}
+                            className="absolute inset-0 bg-black/60 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity cursor-pointer"
+                            title="Change Editor Photo"
+                          >
+                            <Camera className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="flex flex-col items-end">
+                          <span className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full ${
+                            isCurrent ? 'bg-white text-black font-bold' : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
+                          }`}>
+                            {isCurrent ? 'Active Workspace' : 'Editor'}
+                          </span>
+                          <span className="text-xs text-amber-400 font-mono mt-1 flex items-center space-x-1">
+                            <Star className="w-3 h-3 fill-amber-400" />
+                            <span>{ed.rating || 5}.0</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Info */}
+                      <div>
+                        <h4 className="text-lg font-bold font-display text-white">{ed.name}</h4>
+                        <p className="text-xs text-zinc-400 line-clamp-1">{ed.bio || 'Film Editor & Colorist'}</p>
+                        <div className="mt-2 space-y-1 text-xs text-zinc-500 font-mono">
+                          {ed.phone && <div className="truncate">📞 {ed.phone}</div>}
+                          {ed.email && <div className="truncate">✉️ {ed.email}</div>}
+                        </div>
+                      </div>
+
+                      {/* Workload Stats */}
+                      <div className="grid grid-cols-3 gap-2 p-3 bg-zinc-900/50 rounded-2xl border border-zinc-900 text-center font-mono">
+                        <div>
+                          <span className="text-[9px] text-zinc-500 uppercase block">Total</span>
+                          <span className="text-sm font-bold text-white">{edProjects.length}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-zinc-500 uppercase block">Running</span>
+                          <span className="text-sm font-bold text-emerald-400">{edRunning.length}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-zinc-500 uppercase block">Done</span>
+                          <span className="text-sm font-bold text-zinc-300">{edCompleted.length}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="pt-4 border-t border-zinc-900/80 flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedEditorId(ed.id);
+                          setActiveTab('running_projects');
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl bg-white text-black font-bold text-xs font-mono hover:bg-zinc-200 transition-all cursor-pointer flex items-center space-x-1"
+                      >
+                        <span>View Suite</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+
+                      <div className="flex items-center space-x-1">
+                        <button
+                          type="button"
+                          onClick={(e) => openPhotoChangeModal(ed, e)}
+                          className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                          title="Change Photo"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                        </button>
+
+                        {userRole === 'admin' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(ed)}
+                              className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                              title="Edit Editor Profile"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setEditorToDeleteId(ed.id)}
+                              className="p-1.5 rounded-xl bg-zinc-900 hover:bg-red-500/20 border border-zinc-800 hover:border-red-500/30 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
+                              title="Retire / Delete Editor"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
       </main>
 
       {/* ========================================================================= */}
@@ -1676,6 +2552,216 @@ const EditorsView = React.memo(function EditorsView({
                   Delete Record
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CONFIRM RESET PROJECT STAGE MODAL */}
+      <AnimatePresence>
+        {projectToReset && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={() => setProjectToReset(null)} />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-zinc-950 border border-sky-500/40 rounded-3xl p-6 space-y-4 shadow-2xl z-10"
+            >
+              <div className="flex items-center space-x-2 text-sky-400">
+                <RotateCcw className="w-5 h-5" />
+                <h3 className="text-lg font-bold text-white font-display">Reset Project Stage</h3>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                Are you sure you want to reset workflow progression for <strong className="text-white">{projectToReset.coupleName}</strong> back to the initial <span className="text-sky-300 font-mono">Ingest (data_received)</span> stage?
+              </p>
+
+              <div className="flex justify-end space-x-3 pt-4 border-t border-zinc-900">
+                <button
+                  type="button"
+                  onClick={() => setProjectToReset(null)}
+                  className="px-4 py-2 text-xs font-mono text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmResetProject}
+                  className="px-5 py-2 rounded-full bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg"
+                >
+                  Confirm Reset
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CONFIRM DELETE PROJECT MODAL */}
+      <AnimatePresence>
+        {projectToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md" onClick={() => setProjectToDelete(null)} />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-zinc-950 border border-red-500/40 rounded-3xl p-6 space-y-4 shadow-2xl z-10"
+            >
+              <div className="flex items-center space-x-2 text-red-400">
+                <Trash2 className="w-5 h-5" />
+                <h3 className="text-lg font-bold text-white font-display">Delete Wedding Project</h3>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                Are you sure you want to move <strong className="text-white">{projectToDelete.coupleName}</strong> to the recycle bin? It will be safely archived and unassigned from the editor.
+              </p>
+
+              <div className="flex justify-end space-x-3 pt-4 border-t border-zinc-900">
+                <button
+                  type="button"
+                  onClick={() => setProjectToDelete(null)}
+                  className="px-4 py-2 text-xs font-mono text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteProject}
+                  className="px-5 py-2 rounded-full bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg"
+                >
+                  Delete Project
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* EDIT PROJECT DETAILS MODAL */}
+      <AnimatePresence>
+        {editingProject && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md" onClick={() => setEditingProject(null)} />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="relative w-full max-w-lg bg-zinc-950 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-5 shadow-2xl z-10 font-sans max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center border-b border-zinc-900 pb-4">
+                <div>
+                  <span className="text-[10px] font-mono tracking-widest text-zinc-500 uppercase">PROJECT SPECS</span>
+                  <h3 className="text-xl font-bold font-display text-white mt-0.5">
+                    Edit Project: {editingProject.coupleName}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingProject(null)}
+                  className="text-zinc-500 hover:text-white text-lg p-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveProjectEdit} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-mono text-zinc-400 uppercase mb-1">Couple / Event Title</label>
+                    <input
+                      type="text"
+                      value={projectEditTitle}
+                      onChange={(e) => setProjectEditTitle(e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono text-zinc-400 uppercase mb-1">Target Delivery Date</label>
+                    <input
+                      type="date"
+                      value={projectEditDeliveryDate}
+                      onChange={(e) => setProjectEditDeliveryDate(e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-mono text-zinc-400 uppercase mb-1">Production Status</label>
+                    <select
+                      value={projectEditStatus}
+                      onChange={(e) => setProjectEditStatus(e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors cursor-pointer"
+                    >
+                      <option value="data_received">Ingest (Data Received)</option>
+                      <option value="assigned">Assigned</option>
+                      <option value="editing">Editing (Story Cut)</option>
+                      <option value="review">Review (Picture Lock)</option>
+                      <option value="revision">Revision</option>
+                      <option value="rendering">Rendering</option>
+                      <option value="delivered">Delivered (Completed)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono text-zinc-400 uppercase mb-1">Priority</label>
+                    <select
+                      value={projectEditPriority}
+                      onChange={(e) => setProjectEditPriority(e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors cursor-pointer"
+                    >
+                      <option value="low">Low Priority</option>
+                      <option value="medium">Medium Priority</option>
+                      <option value="high">High Priority</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono text-zinc-400 uppercase mb-1">Editor Share (₹)</label>
+                    <input
+                      type="number"
+                      value={projectEditFee}
+                      onChange={(e) => setProjectEditFee(Number(e.target.value))}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-mono text-zinc-400 uppercase mb-1">Production Notes & Directives</label>
+                  <textarea
+                    rows={3}
+                    value={projectEditNotes}
+                    onChange={(e) => setProjectEditNotes(e.target.value)}
+                    placeholder="Audio sync requirements, LUT preferences, client revision requests..."
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:border-white focus:outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4 border-t border-zinc-900">
+                  <button
+                    type="button"
+                    onClick={() => setEditingProject(null)}
+                    className="px-4 py-2 text-xs font-mono text-zinc-400 hover:text-white cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingProjectEdit}
+                    className="px-6 py-2 rounded-full bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-zinc-200 transition-all cursor-pointer shadow-lg disabled:opacity-50"
+                  >
+                    {isSavingProjectEdit ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

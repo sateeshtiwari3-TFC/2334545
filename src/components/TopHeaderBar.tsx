@@ -19,7 +19,8 @@ import {
   History,
   Trash2,
   Search,
-  Command
+  Command,
+  Zap
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import ThemeToggle, { AppTheme } from './ThemeToggle';
@@ -50,6 +51,7 @@ const TAB_TITLES: Record<string, { label: string; icon: React.ElementType; descr
   audit: { label: 'Audit & Revision Log', icon: History, description: 'Chronological Trail of Statuses, Amounts & Editor Assignments' },
   reports: { label: 'Reports & Audits', icon: BarChart3, description: 'Profitability, Expenses & GST Reports' },
   notifications: { label: 'Notifications Center', icon: Bell, description: 'Automated Reminders & Deadline Alerts' },
+  automation: { label: 'Studio Automations', icon: Zap, description: '1-Click Workflows, WhatsApp Triggers & Studio AutoPilot' },
   recyclebin: { label: 'Recycle Bin & Safe Trash', icon: Trash2, description: 'Safety Net for Accidental Deletions & Instant 1-Click Restoration' },
   settings: { label: 'Studio Settings', icon: Settings, description: 'System Configuration & Theme Customization' },
 };
@@ -77,7 +79,7 @@ export default function TopHeaderBar({
   const shortcutKey = isMac ? '⌘K' : 'Ctrl+K';
 
   return (
-    <header className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 p-3.5 sm:p-4 md:px-5 lg:px-6 md:py-3.5 rounded-2xl bg-charcoal-900/80 border border-white/10 backdrop-blur-xl shadow-xl relative z-30 transition-all duration-300 min-w-0">
+    <header className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 p-3.5 sm:p-4 md:px-5 md:pr-40 lg:px-6 lg:pr-44 md:py-3.5 rounded-2xl bg-charcoal-900/80 border border-white/10 backdrop-blur-xl shadow-xl relative z-30 transition-all duration-300 min-w-0">
       {/* Left side: Current View Breadcrumb / Title with Dynamic Accent Styling */}
       <div className="flex items-center space-x-3 shrink-0 min-w-0">
         <div className={`p-2 sm:p-2.5 rounded-xl ${tabTheme.headerBadgeGradient} border ${tabTheme.headerBadgeBorder} ${tabTheme.headerBadgeText} shrink-0 shadow-inner transition-all duration-300`}>

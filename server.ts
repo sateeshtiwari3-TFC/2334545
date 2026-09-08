@@ -832,6 +832,221 @@ You specialize in Indian and international luxury wedding video marketing. You k
     }
   });
 
+  // Automated AI Project Sheet & Brief Generator Endpoint
+  app.post("/api/gemini/auto-brief", async (req, res) => {
+    try {
+      const {
+        coupleName = "Pooja & Rohan",
+        eventType = "Wedding Film & Teaser",
+        clientNotes = "",
+        deliverablesRequested = "Teaser (1 min), Cinematic Highlight (4-6 min), Full Traditional Video",
+        studioName = "The Frame Cut Studio Partner"
+      } = req.body;
+
+      const client = getAiClient();
+
+      const prompt = `Automated Wedding Project Sheet & Editor Brief Generation:
+- Couple / Project: ${coupleName}
+- Event Type: ${eventType}
+- Studio Partner: ${studioName}
+- Deliverables Requested: ${deliverablesRequested}
+- Client Discussion Notes & Special Requests: ${clientNotes || "Standard luxury royal wedding coverage with emotional vows, grand guest entries, energetic sangeet, and traditional rituals."}
+
+As the Chief Post-Production Supervisor at 'The Frame Cut Studio', formulate an automated, high-precision editing brief and project worksheet for our video editors and colorists.
+Include:
+1. Couple Narrative and visual tone summary.
+2. Deliverables Checklist with recommended editor roles, durations, and key sequence highlights.
+3. Shooting sequence breakdown for events (e.g. Haldi, Sangeet, Varmala, Pheras, Reception) with shot requirements and music vibes.
+4. Audio & Music direction (recommended BPM, genres, mood pacing).
+5. Editing turnaround milestones (rough cut, color grade, audio mix, final delivery).
+6. Estimated raw footage & hard disk storage in TB.`;
+
+      const briefConfig: any = {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            projectTitle: { type: Type.STRING },
+            coupleNarrative: { type: Type.STRING },
+            deliverablesChecklist: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  targetDuration: { type: Type.STRING },
+                  recommendedEditorRole: { type: Type.STRING },
+                  keyHighlights: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                  }
+                },
+                required: ["name", "targetDuration", "recommendedEditorRole", "keyHighlights"]
+              }
+            },
+            shootingSequence: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  event: { type: Type.STRING },
+                  shotRequirements: { type: Type.STRING },
+                  musicVibe: { type: Type.STRING }
+                },
+                required: ["event", "shotRequirements", "musicVibe"]
+              }
+            },
+            audioDirection: {
+              type: Type.OBJECT,
+              properties: {
+                recommendedBpm: { type: Type.STRING },
+                genre: { type: Type.STRING },
+                moodGuidelines: { type: Type.STRING }
+              },
+              required: ["recommendedBpm", "genre", "moodGuidelines"]
+            },
+            editingTurnaroundMilestones: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  stage: { type: Type.STRING },
+                  targetDaysFromShoot: { type: Type.NUMBER },
+                  description: { type: Type.STRING }
+                },
+                required: ["stage", "targetDaysFromShoot", "description"]
+              }
+            },
+            storageEstimateTb: { type: Type.STRING }
+          },
+          required: [
+            "projectTitle",
+            "coupleNarrative",
+            "deliverablesChecklist",
+            "shootingSequence",
+            "audioDirection",
+            "editingTurnaroundMilestones",
+            "storageEstimateTb"
+          ]
+        }
+      };
+
+      const { response } = await callGeminiWithFallback(client, {
+        primaryModel: "gemini-flash-latest",
+        fallbackModels: ["gemini-3.8-flash", "gemini-3.1-flash-lite"],
+        contents: prompt,
+        config: briefConfig
+      });
+
+      const parsedData = JSON.parse(response.text || "{}");
+      res.json({
+        success: true,
+        data: parsedData
+      });
+    } catch (error: any) {
+      console.error("Gemini Auto-Brief Error:", error);
+      res.status(500).json({
+        error: error.message || "Failed to generate AI project brief."
+      });
+    }
+  });
+
+  // Automated Smart Cost & Profit Estimator Endpoint
+  app.post("/api/gemini/estimate-profit", async (req, res) => {
+    try {
+      const {
+        projectAmount = 50000,
+        editorPayment = 12000,
+        deliverables = "1 Reel, 1 Teaser (3min), 1 Full Film",
+        additionalCosts = 4000,
+        notes = ""
+      } = req.body;
+
+      const client = getAiClient();
+
+      const prompt = `Wedding Post-Production Profitability & Cost Analysis:
+- Total Contract Amount (Client Fee): ₹${projectAmount}
+- Allocated Editor Compensation: ₹${editorPayment}
+- Hard Disk / Music Licensing / Cloud Delivery Expenses: ₹${additionalCosts}
+- Deliverables Scope: ${deliverables}
+- Special Notes / Complexities: ${notes || "Standard 4K editing workflow with 2 revision cycles."}
+
+As the Financial Operations Director at 'The Frame Cut Studio', evaluate the financial viability and net profitability of this project:
+1. Estimate itemized cost breakdown (Editor, Musicbed/Artlist license, Cloud Drive/Storage, Contingency).
+2. Calculate total cost, net profit, and profit margin %.
+3. Assign a Risk Rating (Low, Moderate, High) based on scope creep, revision risks, and margin thickness.
+4. List key risk factors and actionable cost-optimization tips.
+5. Provide a suggested optimal client selling price to achieve at least a 60% gross margin.`;
+
+      const profitConfig: any = {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            projectAmount: { type: Type.NUMBER },
+            estimatedCosts: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  category: { type: Type.STRING },
+                  estimatedAmount: { type: Type.NUMBER },
+                  notes: { type: Type.STRING }
+                },
+                required: ["category", "estimatedAmount", "notes"]
+              }
+            },
+            totalEstimatedCost: { type: Type.NUMBER },
+            netProfit: { type: Type.NUMBER },
+            profitMarginPercentage: { type: Type.NUMBER },
+            riskRating: {
+              type: Type.STRING,
+              description: "Low, Moderate, or High"
+            },
+            riskFactors: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            costOptimizationTips: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            suggestedSellingPrice: { type: Type.NUMBER }
+          },
+          required: [
+            "projectAmount",
+            "estimatedCosts",
+            "totalEstimatedCost",
+            "netProfit",
+            "profitMarginPercentage",
+            "riskRating",
+            "riskFactors",
+            "costOptimizationTips",
+            "suggestedSellingPrice"
+          ]
+        }
+      };
+
+      const { response } = await callGeminiWithFallback(client, {
+        primaryModel: "gemini-flash-latest",
+        fallbackModels: ["gemini-3.8-flash", "gemini-3.1-flash-lite"],
+        contents: prompt,
+        config: profitConfig
+      });
+
+      const parsedData = JSON.parse(response.text || "{}");
+      res.json({
+        success: true,
+        data: parsedData
+      });
+    } catch (error: any) {
+      console.error("Gemini Estimate Profit Error:", error);
+      res.status(500).json({
+        error: error.message || "Failed to estimate project profit."
+      });
+    }
+  });
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });

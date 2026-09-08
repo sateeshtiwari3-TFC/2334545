@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { CalendarEvent, AppNotification, Project } from '../types';
 import { runDeadlineRunnerCheck, DeadlineCheckResult } from '../services/deadlineRunner';
+import { runStudioAutomationSuite } from '../services/automationEngine';
 import { playDeadlineAlertChime } from '../utils/chimeSound';
 import { 
   getBrowserNotificationPermission, 
@@ -79,6 +80,13 @@ export function useDeadlineRunner(
       setLastResult(res);
       setLastCheckTime(new Date());
       setCheckCount(c => c + 1);
+
+      // Trigger the studio automation suite in background
+      runStudioAutomationSuite(
+        projectsRef.current,
+        [],
+        notificationsRef.current
+      ).catch(e => console.warn('[useDeadlineRunner] background automation suite silent catch:', e));
 
       if (res.triggeredNotifications.length > 0) {
         const count = res.triggeredNotifications.length;

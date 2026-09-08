@@ -312,6 +312,28 @@ const TAB_THEMES: Record<string, TabColorTheme> = {
     glow: 'shadow-amber-500/10'
   },
 
+  // Electric Amber / Gold for 'automation'
+  automation: {
+    id: 'automation',
+    name: 'Studio Automations',
+    text: 'text-amber-400',
+    textActive: 'text-amber-300 font-semibold',
+    iconActive: 'text-amber-400 filter drop-shadow-[0_0_8px_rgba(251,191,36,0.85)]',
+    bgActive: 'bg-amber-500/20',
+    bgMobileActive: 'bg-gradient-to-b from-amber-500/25 to-charcoal-950 text-amber-300',
+    borderActive: 'border-amber-400/60',
+    borderHover: 'hover:border-amber-400/40',
+    pillGradient: 'bg-gradient-to-r from-amber-500/30 via-yellow-900/30 to-transparent',
+    pillBorder: 'border-l-4 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.3)]',
+    headerBadgeGradient: 'bg-gradient-to-br from-amber-500/30 via-yellow-950/40 to-charcoal-900',
+    headerBadgeBorder: 'border-amber-500/50',
+    headerBadgeText: 'text-amber-300',
+    indicatorBar: 'bg-amber-400',
+    indicatorShadow: 'shadow-[0_0_10px_rgba(251,191,36,0.9)]',
+    subDot: 'bg-amber-400',
+    glow: 'shadow-amber-500/20'
+  },
+
   // Red / Crimson for 'recyclebin'
   recyclebin: {
     id: 'recyclebin',

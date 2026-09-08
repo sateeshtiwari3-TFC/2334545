@@ -83,14 +83,14 @@ export const StudioPaymentModal: React.FC<StudioPaymentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="fixed inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        className="relative w-full max-w-md bg-charcoal-900 border border-gold-500/30 rounded-3xl p-6 shadow-2xl z-10"
+        className="relative w-full max-w-md bg-charcoal-900 border border-gold-500/30 rounded-3xl p-6 shadow-2xl z-10 my-auto max-h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar"
       >
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
           <div className="flex items-center space-x-3">

@@ -29,7 +29,8 @@ import {
   AuditLogType,
   AuditLogCategory,
   RecycleBinItem,
-  RecycleBinItemType
+  RecycleBinItemType,
+  CustomAutomationRule
 } from './types';
 
 // Parallax Design Background
@@ -59,6 +60,9 @@ import { useWeeklyBackup } from './hooks/useWeeklyBackup';
 import WeeklyBackupPromptModal from './components/WeeklyBackupPromptModal';
 import TopHeaderBar from './components/TopHeaderBar';
 import GlobalSearchModal from './components/GlobalSearchModal';
+import QuickNotesDrawer from './components/dashboard/QuickNotesDrawer';
+import AutomationHub from './components/AutomationHub';
+import { evaluateProjectStatusTransitions } from './services/automationEngine';
 import { Zap, X } from 'lucide-react';
 
 // Helper to convert any Firebase/JS timestamp or date safely to milliseconds
@@ -156,6 +160,7 @@ export default function App() {
   const [payments, setPayments] = useState<PaymentHistory[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [recycleBinItems, setRecycleBinItems] = useState<RecycleBinItem[]>([]);
+  const [automationRules, setAutomationRules] = useState<CustomAutomationRule[]>([]);
 
   // Initialize Background Deadline Task Runner Service
   const {
@@ -224,6 +229,7 @@ export default function App() {
     let unsubPayments = () => {};
     let unsubInvoices = () => {};
     let unsubRecycleBin = () => {};
+    let unsubAutomationRules = () => {};
 
     try {
       // Projects Sync
@@ -430,6 +436,20 @@ export default function App() {
           console.error("Error syncing recycle bin from Firestore:", error);
         }
       );
+      // Automation Rules Sync
+      unsubAutomationRules = onSnapshot(
+        collection(db, 'automation_rules'),
+        (snap) => {
+          const list: CustomAutomationRule[] = [];
+          snap.forEach(docSnap => {
+            list.push({ ...docSnap.data() as any, id: docSnap.id });
+          });
+          setAutomationRules(list);
+        },
+        (error) => {
+          console.error("Error syncing automation rules from Firestore:", error);
+        }
+      );
     } catch (e) {
       console.error("Critical error setting up real-time subscriptions:", e);
     }
@@ -445,6 +465,7 @@ export default function App() {
       unsubPayments();
       unsubInvoices();
       unsubRecycleBin();
+      unsubAutomationRules();
     };
   }, []);
 
@@ -510,7 +531,31 @@ export default function App() {
   const handleUpdateProject = async (id: string, updates: Partial<Project>) => {
     const existingProj = projects.find(p => p.id === id);
     const docRef = doc(db, 'projects', id);
-    const cleanedUpdates = cleanUndefined(updates);
+    
+    // Check dynamic automation rules (e.g. move to 'review' when folder path added)
+    let effectiveUpdates = { ...updates };
+    if (existingProj) {
+      const autoTransition = evaluateProjectStatusTransitions(existingProj, updates, automationRules.length > 0 ? automationRules : undefined);
+      if (autoTransition.targetStatus && !updates.status) {
+        effectiveUpdates.status = autoTransition.targetStatus;
+        // Also add an automated in-app notification if configured
+        if (autoTransition.triggeredRule?.autoNotify) {
+          const dedupeId = `auto-trans-${id}-${Date.now()}`;
+          setDoc(doc(db, 'notifications', dedupeId), {
+            id: dedupeId,
+            title: `⚡ Automation: ${existingProj.coupleName || existingProj.projectName}`,
+            message: `Project status automatically moved to "${autoTransition.targetStatus.replace(/_/g, ' ').toUpperCase()}" because: ${autoTransition.reason || autoTransition.triggeredRule.name}`,
+            type: 'status_update',
+            projectId: id,
+            isAutomated: true,
+            read: false,
+            createdAt: serverTimestamp()
+          }).catch(e => console.warn('Could not save auto-transition notification:', e));
+        }
+      }
+    }
+
+    const cleanedUpdates = cleanUndefined(effectiveUpdates);
     await setDoc(docRef, {
       ...cleanedUpdates,
       updatedAt: serverTimestamp()
@@ -1435,6 +1480,7 @@ export default function App() {
             onLogPayment={handleLogPayment}
             onDeletePayment={handleDeletePayment}
             onUpdateProject={handleUpdateProject}
+            onDeleteProject={handleDeleteProject}
           />
         );
       case 'gemini':
@@ -1476,6 +1522,7 @@ export default function App() {
             onTriggerWeeklyBackup={handleTriggerWeeklyBackup}
             onSnoozeWeeklyBackup={handleSnoozeWeeklyBackup}
             revisions={revisions}
+            onUpdateCalendarEvent={handleUpdateCalendarEvent}
           />
         );
       case 'payments':
@@ -1559,6 +1606,7 @@ export default function App() {
         return (
           <CalendarView
             projects={roleFilteredProjects}
+            studios={studios}
             events={calendarEvents}
             onAddEvent={handleAddCalendarEvent}
             onUpdateEvent={handleUpdateCalendarEvent}
@@ -1580,6 +1628,18 @@ export default function App() {
             onMarkRead={handleMarkRead}
             onClearNotification={handleClearNotification}
             onClearAllNotifications={handleClearAllNotifications}
+          />
+        );
+      case 'automation':
+        return (
+          <AutomationHub
+            projects={projects}
+            invoices={invoices}
+            studios={studios}
+            editors={editors}
+            notifications={notifications}
+            onUpdateProject={handleUpdateProject}
+            onNavigateTab={(tab) => setActiveTab(tab)}
           />
         );
       case 'settings':
@@ -1675,6 +1735,17 @@ export default function App() {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Floating Quick Notes & Scratchpad (Top Floating across OS) */}
+      {currentUser && (
+        <QuickNotesDrawer
+          projects={projects}
+          onNavigateTab={(tab) => setActiveTab(tab)}
+          onOpenCalendarReminder={(_title, _projId) => {
+            setActiveTab('calendar');
+          }}
+        />
+      )}
 
       {/* Real-time Global Omni-Search Modal (Cmd+K / Ctrl+K) */}
       <AnimatePresence>

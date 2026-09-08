@@ -422,6 +422,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             setStatusFilter={setStatusFilter}
             deadlineFilter={deadlineFilter}
             setDeadlineFilter={setDeadlineFilter}
+            searchQuery={searchQuery}
             onSelectProject={handleSelectProject}
             onEditProject={handleEditProject}
             onDeleteProject={handleDeleteProject}

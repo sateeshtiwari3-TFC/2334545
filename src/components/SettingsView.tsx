@@ -3,6 +3,7 @@ import {
   Settings, 
   Database, 
   RefreshCw, 
+  RotateCcw,
   Check, 
   ShieldAlert, 
   Info, 
@@ -65,6 +66,7 @@ import {
 } from '../types';
 import { THEME_CONFIGS, AppTheme } from './ThemeToggle';
 import LoginScreenCustomizer from './LoginScreenCustomizer';
+import AutomationRulesSettings from './AutomationRulesSettings';
 
 interface SettingsViewProps {
   onResetDatabase: () => Promise<void>;
@@ -109,6 +111,9 @@ export default function SettingsView({
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
+  // Settings Navigation Tab state: 'general' (All System Settings) vs 'automation_rules' (Automation Rules)
+  const [settingsActiveTab, setSettingsActiveTab] = useState<'general' | 'automation_rules'>('general');
+
   // Sync state
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'offline_backup'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -132,15 +137,37 @@ export default function SettingsView({
   // Theme Cross-Fade Animation State
   const [themeTransitioning, setThemeTransitioning] = useState(false);
   const [lastSwitchedTheme, setLastSwitchedTheme] = useState<AppTheme | null>(null);
+  const [themeFeedback, setThemeFeedback] = useState<{ message: string; type: 'info' | 'success' } | null>(null);
 
   const handleSelectTheme = (targetTheme: AppTheme) => {
     if (targetTheme === theme) return;
     setThemeTransitioning(true);
     setLastSwitchedTheme(targetTheme);
     onThemeChange?.(targetTheme);
+    try {
+      localStorage.setItem('tfc_theme', targetTheme);
+    } catch {
+      // Safe fallback
+    }
     setTimeout(() => {
       setThemeTransitioning(false);
     }, 900);
+  };
+
+  const handleResetDefaultTheme = () => {
+    if (theme === 'luxury-green') {
+      setThemeFeedback({ message: 'Default Luxury Green theme is already active', type: 'info' });
+      setTimeout(() => setThemeFeedback(null), 2500);
+      return;
+    }
+    handleSelectTheme('luxury-green');
+    try {
+      localStorage.setItem('tfc_theme', 'luxury-green');
+    } catch {
+      // Safe fallback
+    }
+    setThemeFeedback({ message: 'Theme reset to default Luxury Green brand', type: 'success' });
+    setTimeout(() => setThemeFeedback(null), 3000);
   };
 
   // Payment & Remaining Balance Diagnostic Panel State
@@ -900,14 +927,60 @@ export default function SettingsView({
     <div className="max-w-5xl mx-auto space-y-6">
       
       {/* Settings Panel */}
-      <div className="p-6 rounded-3xl glass-panel relative overflow-hidden">
+      <div className="p-6 rounded-3xl glass-panel relative overflow-hidden space-y-5">
         <div className="absolute top-0 right-0 w-24 h-24 bg-luxury-green-800/10 rounded-full blur-xl pointer-events-none" />
-        <h2 className="text-xl font-bold font-display text-white">System Settings</h2>
-        <p className="text-xs text-gray-400 mt-1">Configure workspace defaults, trigger data synchronizations, and adjust ERP properties.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold font-display text-white">System Settings</h2>
+            <p className="text-xs text-gray-400 mt-1">Configure workspace defaults, trigger data synchronizations, and adjust ERP properties.</p>
+          </div>
+
+          {/* Navigation Tabs Header */}
+          <div className="flex items-center p-1 bg-charcoal-950/80 rounded-2xl border border-white/10 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setSettingsActiveTab('general')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+                settingsActiveTab === 'general'
+                  ? 'bg-gradient-to-r from-luxury-green-700 to-luxury-green-800 text-white shadow-md border border-luxury-green-500/30'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>General Settings</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSettingsActiveTab('automation_rules')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+                settingsActiveTab === 'automation_rules'
+                  ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-charcoal-950 shadow-md border border-amber-400 font-black'
+                  : 'text-gray-400 hover:text-amber-300'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Automation Rules</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                settingsActiveTab === 'automation_rules' ? 'bg-charcoal-950/30 text-charcoal-950 font-black' : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                Firestore
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Main Blocks */}
-      <div className="space-y-4">
+      {/* When Automation Rules Tab is Active */}
+      {settingsActiveTab === 'automation_rules' && (
+        <AutomationRulesSettings
+          projects={projects}
+          onUpdateProject={onUpdateProject}
+        />
+      )}
+
+      {/* Main Blocks (General Tab) */}
+      <div className={`space-y-4 ${settingsActiveTab === 'automation_rules' ? 'hidden' : 'block'}`}>
 
         {/* User Profile Settings Block */}
         <div className="p-6 rounded-3xl bg-charcoal-900 border border-luxury-green-800/15 space-y-5">
@@ -1083,38 +1156,95 @@ export default function SettingsView({
               </div>
               <div>
                 <span className="text-sm font-bold text-white tracking-tight block font-display">Application Color Palette</span>
-                <p className="text-[9px] text-gray-400 font-mono mt-0.5 uppercase tracking-widest">Select user interface brand theme</p>
+                <p className="text-[9px] text-gray-400 font-mono mt-0.5 uppercase tracking-widest">Select user interface brand theme • 3 Presets Available</p>
               </div>
             </h3>
 
-            {/* Live Cross-Fade Status Pill */}
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={theme + (themeTransitioning ? '-transitioning' : '')}
-                initial={{ opacity: 0, y: -4, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                transition={{ duration: 0.35 }}
-                className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-mono font-semibold border backdrop-blur-md self-start sm:self-auto ${
+            {/* Live Active Theme Visual Indicator & Reset to Default Action */}
+            <div className="flex items-center flex-wrap gap-2.5 self-start sm:self-auto">
+              {/* Prominent Active Theme Visual Indicator Pill */}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={theme + (themeTransitioning ? '-transitioning' : '')}
+                  initial={{ opacity: 0, y: -4, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                  transition={{ duration: 0.35 }}
+                  className={`inline-flex items-center px-3 py-1.5 rounded-xl text-[11px] font-mono font-semibold border backdrop-blur-md ${
+                    theme === 'luxury-green'
+                      ? 'bg-luxury-green-950/90 text-luxury-green-300 border-luxury-green-500/40 shadow-[0_0_15px_rgba(60,143,120,0.3)]'
+                      : theme === 'midnight-gold'
+                      ? 'bg-amber-950/90 text-gold-300 border-gold-500/40 shadow-[0_0_15px_rgba(212,175,55,0.3)]'
+                      : 'bg-blue-950/90 text-blue-300 border-blue-500/40 shadow-[0_0_15px_rgba(37,99,235,0.3)]'
+                  }`}
+                >
+                  <span className="relative flex h-2 w-2 mr-2">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                      theme === 'luxury-green' ? 'bg-luxury-green-400' : theme === 'midnight-gold' ? 'bg-gold-400' : 'bg-blue-400'
+                    }`} />
+                    <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                      theme === 'luxury-green' ? 'bg-luxury-green-500' : theme === 'midnight-gold' ? 'bg-gold-500' : 'bg-blue-500'
+                    }`} />
+                  </span>
+                  <span className="text-gray-400 font-normal mr-1">Active:</span>
+                  <span className="font-bold text-white mr-1.5">{THEME_CONFIGS[theme]?.name || 'Theme'}</span>
+                  {theme === 'luxury-green' ? (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-luxury-green-500/20 text-luxury-green-300 border border-luxury-green-500/30">
+                      Default Brand
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/10 text-gray-300 border border-white/15">
+                      Custom Theme
+                    </span>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+
+              {/* 'Reset to Default' Button */}
+              <button
+                type="button"
+                id="reset-theme-default-btn"
+                onClick={handleResetDefaultTheme}
+                title={theme === 'luxury-green' ? 'Default Luxury Green theme is currently active' : 'Click to reset theme back to factory default (Luxury Green)'}
+                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-medium transition-all duration-300 cursor-pointer ${
                   theme === 'luxury-green'
-                    ? 'bg-luxury-green-950/80 text-luxury-green-300 border-luxury-green-500/30 shadow-[0_0_10px_rgba(60,143,120,0.2)]'
-                    : theme === 'midnight-gold'
-                    ? 'bg-amber-950/80 text-gold-300 border-gold-500/30 shadow-[0_0_10px_rgba(212,175,55,0.2)]'
-                    : 'bg-blue-950/80 text-blue-300 border-blue-500/30 shadow-[0_0_10px_rgba(37,99,235,0.2)]'
+                    ? 'bg-charcoal-800/70 text-gray-400 border border-white/10 hover:border-white/20 hover:text-gray-200'
+                    : 'bg-luxury-green-950/90 hover:bg-luxury-green-900 text-luxury-green-300 border border-luxury-green-500/50 shadow-[0_0_15px_rgba(60,143,120,0.25)] hover:shadow-[0_0_20px_rgba(60,143,120,0.4)] hover:border-luxury-green-400 hover:scale-[1.02] active:scale-[0.98]'
                 }`}
               >
-                <Sparkles className={`w-3 h-3 mr-1.5 ${themeTransitioning ? 'animate-spin' : 'animate-pulse'}`} />
-                {themeTransitioning ? 'Cross-Fading Theme...' : `${THEME_CONFIGS[theme]?.name || 'Theme'} Active`}
-              </motion.div>
-            </AnimatePresence>
+                <RotateCcw className={`w-3.5 h-3.5 ${theme !== 'luxury-green' ? 'text-luxury-green-400 animate-spin-reverse' : 'text-gray-400'}`} />
+                <span>Reset to Default</span>
+              </button>
+            </div>
           </div>
 
+          {/* Real-time Theme Feedback Banner */}
+          <AnimatePresence>
+            {themeFeedback && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="relative z-10 overflow-hidden"
+              >
+                <div className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-mono border ${
+                  themeFeedback.type === 'success'
+                    ? 'bg-luxury-green-950/70 border-luxury-green-500/40 text-luxury-green-300 shadow-[0_0_12px_rgba(60,143,120,0.2)]'
+                    : 'bg-charcoal-800/90 border-white/15 text-gray-300'
+                }`}>
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-luxury-green-400" />
+                  <span>{themeFeedback.message}</span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <p className="relative z-10 text-xs text-gray-400 leading-relaxed">
-            Customize the look and feel of your ERP workspace with real-time hardware-accelerated cross-fades. Choose between the deep <strong className="text-luxury-green-400">Luxury Green</strong> signature brand, the high-contrast warmth of <strong className="text-gold-400">Midnight Gold</strong>, or the regal <strong className="text-blue-400">Royal Sapphire</strong> theme.
+            Customize the look and feel of your ERP workspace with real-time hardware-accelerated cross-fades. Choose between the deep <strong className="text-luxury-green-400">Luxury Green</strong> signature brand, the high-contrast warmth of <strong className="text-gold-400">Midnight Gold</strong>, or the regal <strong className="text-blue-400">Royal Sapphire</strong> theme. You can revert back to factory branding at any time with the <strong className="text-white">Reset to Default</strong> button.
           </p>
 
-          {/* Theme Option Cards with Smooth Motion and Floating Active Indicators */}
-          <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Theme Option Cards with Distinct Active Visual Indicators */}
+          <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3.5">
             {/* Luxury Green Card Option */}
             <motion.button
               type="button"
@@ -1122,31 +1252,51 @@ export default function SettingsView({
               onClick={() => handleSelectTheme('luxury-green')}
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.98 }}
-              className={`relative p-4 rounded-2xl border text-left cursor-pointer flex items-center justify-between group overflow-hidden transition-all duration-500 ${
+              className={`relative p-4 rounded-2xl border text-left cursor-pointer flex flex-col justify-between group overflow-hidden transition-all duration-500 ${
                 theme === 'luxury-green'
-                  ? 'bg-luxury-green-950/60 border-luxury-green-500 text-white shadow-[0_0_20px_rgba(60,143,120,0.22)]'
-                  : 'bg-charcoal-950/60 border-luxury-green-800/10 text-gray-400 hover:border-luxury-green-800/30 hover:bg-charcoal-950/80'
+                  ? 'bg-luxury-green-950/70 border-luxury-green-400 ring-2 ring-luxury-green-400/80 ring-offset-2 ring-offset-charcoal-900 text-white shadow-[0_0_25px_rgba(60,143,120,0.35)]'
+                  : 'bg-charcoal-950/60 border-luxury-green-800/10 text-gray-400 hover:border-luxury-green-800/40 hover:bg-charcoal-950/80'
               }`}
             >
-              <div className="flex items-center space-x-3 relative z-10">
+              <div className="flex items-center justify-between w-full relative z-10 mb-2">
                 {/* Visual indicator of colors */}
                 <div className="flex -space-x-1.5">
                   <div className="w-3.5 h-3.5 rounded-full bg-luxury-green-900 border border-charcoal-950 shadow-sm" />
                   <div className="w-3.5 h-3.5 rounded-full bg-luxury-green-500 border border-charcoal-950 shadow-sm" />
                   <div className="w-3.5 h-3.5 rounded-full bg-gold-500 border border-charcoal-950 shadow-sm" />
                 </div>
-                <div>
-                  <span className="text-xs font-bold block text-white group-hover:text-luxury-green-300 transition-colors">Luxury Green</span>
-                  <span className="text-[10px] text-gray-400 font-mono">Default Brand</span>
-                </div>
+
+                {/* Active / Inactive Badge */}
+                {theme === 'luxury-green' ? (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider bg-luxury-green-500 text-charcoal-950 shadow-[0_0_10px_rgba(60,143,120,0.6)] flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-charcoal-950 animate-pulse" />
+                    <span>Active (Default)</span>
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-mono text-gray-500 group-hover:text-gray-400">
+                    Click to activate
+                  </span>
+                )}
               </div>
 
-              <div className={`relative z-10 w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-500 ${
-                theme === 'luxury-green'
-                  ? 'border-luxury-green-400 bg-luxury-green-500 text-charcoal-950 shadow-[0_0_8px_rgba(60,143,120,0.5)]'
-                  : 'border-gray-600 bg-charcoal-900/80 text-transparent'
-              }`}>
-                {theme === 'luxury-green' && <Check className="w-3 h-3 stroke-[3]" />}
+              <div className="flex items-center justify-between w-full relative z-10 mt-1">
+                <div>
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-xs font-bold block text-white group-hover:text-luxury-green-300 transition-colors">Luxury Green</span>
+                    <span className="text-[9px] font-mono px-1 rounded bg-luxury-green-500/20 text-luxury-green-400 border border-luxury-green-500/30">
+                      Default
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-mono">Emerald & Gold Signature</span>
+                </div>
+
+                <div className={`relative z-10 w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-500 ${
+                  theme === 'luxury-green'
+                    ? 'border-luxury-green-400 bg-luxury-green-500 text-charcoal-950 shadow-[0_0_10px_rgba(60,143,120,0.7)] scale-110'
+                    : 'border-gray-600 bg-charcoal-900/80 text-transparent group-hover:border-gray-400'
+                }`}>
+                  {theme === 'luxury-green' && <Check className="w-3 h-3 stroke-[3]" />}
+                </div>
               </div>
             </motion.button>
 
@@ -1157,31 +1307,46 @@ export default function SettingsView({
               onClick={() => handleSelectTheme('midnight-gold')}
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.98 }}
-              className={`relative p-4 rounded-2xl border text-left cursor-pointer flex items-center justify-between group overflow-hidden transition-all duration-500 ${
+              className={`relative p-4 rounded-2xl border text-left cursor-pointer flex flex-col justify-between group overflow-hidden transition-all duration-500 ${
                 theme === 'midnight-gold'
-                  ? 'bg-amber-950/40 border-gold-500 text-white shadow-[0_0_20px_rgba(212,175,55,0.22)]'
-                  : 'bg-charcoal-950/60 border-luxury-green-800/10 text-gray-400 hover:border-gold-500/30 hover:bg-charcoal-950/80'
+                  ? 'bg-amber-950/50 border-gold-400 ring-2 ring-gold-400/80 ring-offset-2 ring-offset-charcoal-900 text-white shadow-[0_0_25px_rgba(212,175,55,0.35)]'
+                  : 'bg-charcoal-950/60 border-luxury-green-800/10 text-gray-400 hover:border-gold-500/40 hover:bg-charcoal-950/80'
               }`}
             >
-              <div className="flex items-center space-x-3 relative z-10">
+              <div className="flex items-center justify-between w-full relative z-10 mb-2">
                 {/* Visual indicator of colors */}
                 <div className="flex -space-x-1.5">
                   <div className="w-3.5 h-3.5 rounded-full bg-amber-950 border border-charcoal-950 shadow-sm" />
                   <div className="w-3.5 h-3.5 rounded-full bg-gold-600 border border-charcoal-950 shadow-sm" />
                   <div className="w-3.5 h-3.5 rounded-full bg-gold-400 border border-charcoal-950 shadow-sm" />
                 </div>
-                <div>
-                  <span className="text-xs font-bold block text-white group-hover:text-gold-300 transition-colors">Midnight Gold</span>
-                  <span className="text-[10px] text-gray-400 font-mono">Amber & Obsidian</span>
-                </div>
+
+                {/* Active / Inactive Badge */}
+                {theme === 'midnight-gold' ? (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider bg-gold-500 text-charcoal-950 shadow-[0_0_10px_rgba(212,175,55,0.6)] flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-charcoal-950 animate-pulse" />
+                    <span>Active Theme</span>
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-mono text-gray-500 group-hover:text-gray-400">
+                    Click to activate
+                  </span>
+                )}
               </div>
 
-              <div className={`relative z-10 w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-500 ${
-                theme === 'midnight-gold'
-                  ? 'border-gold-300 bg-gold-500 text-charcoal-950 shadow-[0_0_8px_rgba(212,175,55,0.5)]'
-                  : 'border-gray-600 bg-charcoal-900/80 text-transparent'
-              }`}>
-                {theme === 'midnight-gold' && <Check className="w-3 h-3 stroke-[3]" />}
+              <div className="flex items-center justify-between w-full relative z-10 mt-1">
+                <div>
+                  <span className="text-xs font-bold block text-white group-hover:text-gold-300 transition-colors">Midnight Gold</span>
+                  <span className="text-[10px] text-gray-400 font-mono">Warm Obsidian & Rich Gold</span>
+                </div>
+
+                <div className={`relative z-10 w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-500 ${
+                  theme === 'midnight-gold'
+                    ? 'border-gold-300 bg-gold-500 text-charcoal-950 shadow-[0_0_10px_rgba(212,175,55,0.7)] scale-110'
+                    : 'border-gray-600 bg-charcoal-900/80 text-transparent group-hover:border-gray-400'
+                }`}>
+                  {theme === 'midnight-gold' && <Check className="w-3 h-3 stroke-[3]" />}
+                </div>
               </div>
             </motion.button>
 
@@ -1192,33 +1357,88 @@ export default function SettingsView({
               onClick={() => handleSelectTheme('royal-sapphire')}
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.98 }}
-              className={`relative p-4 rounded-2xl border text-left cursor-pointer flex items-center justify-between group overflow-hidden transition-all duration-500 ${
+              className={`relative p-4 rounded-2xl border text-left cursor-pointer flex flex-col justify-between group overflow-hidden transition-all duration-500 ${
                 theme === 'royal-sapphire'
-                  ? 'bg-blue-950/50 border-blue-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.25)]'
-                  : 'bg-charcoal-950/60 border-luxury-green-800/10 text-gray-400 hover:border-blue-500/30 hover:bg-charcoal-950/80'
+                  ? 'bg-blue-950/60 border-blue-400 ring-2 ring-blue-400/80 ring-offset-2 ring-offset-charcoal-900 text-white shadow-[0_0_25px_rgba(59,130,246,0.35)]'
+                  : 'bg-charcoal-950/60 border-luxury-green-800/10 text-gray-400 hover:border-blue-500/40 hover:bg-charcoal-950/80'
               }`}
             >
-              <div className="flex items-center space-x-3 relative z-10">
+              <div className="flex items-center justify-between w-full relative z-10 mb-2">
                 {/* Visual indicator of colors */}
                 <div className="flex -space-x-1.5">
                   <div className="w-3.5 h-3.5 rounded-full bg-blue-950 border border-charcoal-950 shadow-sm" />
                   <div className="w-3.5 h-3.5 rounded-full bg-blue-600 border border-charcoal-950 shadow-sm" />
                   <div className="w-3.5 h-3.5 rounded-full bg-sky-400 border border-charcoal-950 shadow-sm" />
                 </div>
-                <div>
-                  <span className="text-xs font-bold block text-white group-hover:text-blue-300 transition-colors">Royal Sapphire</span>
-                  <span className="text-[10px] text-gray-400 font-mono">Navy & Platinum</span>
-                </div>
+
+                {/* Active / Inactive Badge */}
+                {theme === 'royal-sapphire' ? (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider bg-blue-500 text-white shadow-[0_0_10px_rgba(59,130,246,0.6)] flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    <span>Active Theme</span>
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-mono text-gray-500 group-hover:text-gray-400">
+                    Click to activate
+                  </span>
+                )}
               </div>
 
-              <div className={`relative z-10 w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-500 ${
-                theme === 'royal-sapphire'
-                  ? 'border-blue-300 bg-blue-500 text-white shadow-[0_0_8px_rgba(59,130,246,0.5)]'
-                  : 'border-gray-600 bg-charcoal-900/80 text-transparent'
-              }`}>
-                {theme === 'royal-sapphire' && <Check className="w-3 h-3 stroke-[3]" />}
+              <div className="flex items-center justify-between w-full relative z-10 mt-1">
+                <div>
+                  <span className="text-xs font-bold block text-white group-hover:text-blue-300 transition-colors">Royal Sapphire</span>
+                  <span className="text-[10px] text-gray-400 font-mono">Regal Navy & Sapphire Blue</span>
+                </div>
+
+                <div className={`relative z-10 w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-500 ${
+                  theme === 'royal-sapphire'
+                    ? 'border-blue-300 bg-blue-500 text-white shadow-[0_0_10px_rgba(59,130,246,0.7)] scale-110'
+                    : 'border-gray-600 bg-charcoal-900/80 text-transparent group-hover:border-gray-400'
+                }`}>
+                  {theme === 'royal-sapphire' && <Check className="w-3 h-3 stroke-[3]" />}
+                </div>
               </div>
             </motion.button>
+          </div>
+
+          {/* Active Theme Status & Reset Summary Bar */}
+          <div className={`relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl border transition-all duration-500 ${
+            theme === 'luxury-green'
+              ? 'bg-charcoal-950/50 border-white/5'
+              : 'bg-charcoal-950/80 border-gold-500/25 shadow-[0_0_15px_rgba(212,175,55,0.1)]'
+          }`}>
+            <div className="flex items-center space-x-2.5">
+              <span className="relative flex h-2 w-2">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  theme === 'luxury-green' ? 'bg-luxury-green-400' : theme === 'midnight-gold' ? 'bg-gold-400' : 'bg-blue-400'
+                }`} />
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                  theme === 'luxury-green' ? 'bg-luxury-green-500' : theme === 'midnight-gold' ? 'bg-gold-500' : 'bg-blue-500'
+                }`} />
+              </span>
+              <span className="text-xs text-gray-300 font-mono">
+                Current active theme: <strong className="text-white">{THEME_CONFIGS[theme]?.name}</strong>
+                {theme === 'luxury-green' ? (
+                  <span className="text-luxury-green-400 ml-1.5">(Default brand palette active)</span>
+                ) : (
+                  <span className="text-gold-300 ml-1.5">(Custom theme active • Saved in workspace)</span>
+                )}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              id="reset-theme-bottom-btn"
+              onClick={handleResetDefaultTheme}
+              className={`inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-medium transition-all duration-300 cursor-pointer ${
+                theme === 'luxury-green'
+                  ? 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-gray-200 border border-white/10'
+                  : 'bg-luxury-green-950/90 hover:bg-luxury-green-900 text-luxury-green-300 border border-luxury-green-500/50 shadow-[0_0_12px_rgba(60,143,120,0.25)] hover:border-luxury-green-400 hover:scale-[1.02]'
+              }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>{theme === 'luxury-green' ? 'Reset to Default' : 'Reset to Default (Luxury Green)'}</span>
+            </button>
           </div>
 
           {/* Interactive Live Theme Cross-Fade Showcase Panel */}
@@ -1565,6 +1785,12 @@ export default function SettingsView({
             )}
           </div>
         </div>
+
+        {/* Automation Rules & Status Transitions Section */}
+        <AutomationRulesSettings
+          projects={projects}
+          onUpdateProject={onUpdateProject}
+        />
 
         {/* Payment Ledger & Remaining Balance Diagnostic Auditor Panel */}
         <div className="p-6 rounded-3xl bg-charcoal-900 border border-gold-500/30 space-y-5 shadow-2xl">

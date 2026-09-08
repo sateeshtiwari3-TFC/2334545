@@ -199,11 +199,20 @@ export interface AppNotification {
 export interface CalendarEvent {
   id: string;
   title: string;
-  start: string; // date
-  type: 'delivery' | 'shoot' | 'edit' | 'meeting' | 'revision' | string;
+  start: string; // date YYYY-MM-DD
+  type: 'delivery' | 'shoot' | 'edit' | 'meeting' | 'revision' | 'reminder' | 'payment_reminder' | 'project_reminder' | string;
   projectId?: string;
   coupleName?: string;
   color: string;
+  isReminder?: boolean;
+  reminderCategory?: 'payment' | 'project' | 'general';
+  amount?: number;
+  studioName?: string;
+  notes?: string;
+  completed?: boolean;
+  completedAt?: any;
+  priority?: 'normal' | 'urgent';
+  createdAt?: any;
 }
 
 export interface ProjectTemplateTask {
@@ -380,5 +389,111 @@ export interface WeddingCaptionResult {
   };
   whatsappStatusBlurb: string;
   storyPostText: string;
+}
+
+export interface QuickNote {
+  id: string;
+  content: string;
+  projectId?: string;
+  projectName?: string;
+  tag?: 'general' | 'client' | 'editing' | 'audio' | 'gear' | 'urgent';
+  isPinned?: boolean;
+  isCompleted?: boolean;
+  createdAt: any;
+  updatedAt?: any;
+}
+
+export interface CustomAutomationRule {
+  id: string;
+  name: string;
+  description: string;
+  triggerEvent: 
+    | 'folder_path_added'           // e.g., deliveryFolder, rawDataFolder, finalExportFolder, or cloudDriveLink added
+    | 'all_footage_received'        // hardDiskName or rawFootageSizeGB added
+    | 'advance_payment_cleared'     // advancePayment >= projectAmount or advancePayment > 0
+    | 'editor_assigned';            // assignedEditorId assigned
+  folderField?: 'deliveryFolder' | 'finalExportFolder' | 'rawDataFolder' | 'googleDriveLink' | 'cloudDriveLink' | 'any_delivery_path';
+  keywordTrigger?: string;         // Keyword e.g. "Review", "Ready_For_Review", "Final", "Export" in file path
+  pathMatchPattern?: string;       // Optional pattern e.g. "Ready_For_Review", "Review", "Deliverables", or any non-empty path
+  targetStatus: ProjectStatus;     // Target status e.g. 'review' ('ready_for_review'), 'editing', 'delivered', etc.
+  enabled: boolean;
+  autoNotify: boolean;             // Dispatches in-app notification when triggered
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface AutomationSettings {
+  autoOverdueFlagging: boolean;
+  autoTurnaroundDays: number;
+  autoDeliveryDateCalc: boolean;
+  autoArchiveDeliveredDays: number;
+  autoArchiveDeliveredEnabled: boolean;
+  autoBalanceStatusCalc: boolean;
+  autoPostShootPaymentTrigger: boolean;
+  autoInvoiceNumberPrefix: string;
+  autoInvoiceNumberEnabled: boolean;
+  autoWhatsAppRemindersEnabled: boolean;
+  autoEditorDeadlineHours: number;
+  autoBackupWeeklyPrompt: boolean;
+  lastBackupDate?: string;
+  lastAutomationRun?: string;
+  rulesRunCount?: number;
+  // Dynamic status transition rules
+  customStatusRules?: CustomAutomationRule[];
+}
+
+export interface AutomationExecutionReport {
+  timestamp: string;
+  checkedProjectsCount: number;
+  overdueProjectsCount: number;
+  overdueInvoicesCount: number;
+  postShootRemindersCount: number;
+  autoArchivedProjectsCount: number;
+  balancesAuditedCount: number;
+  notificationsGenerated: number;
+  details: string[];
+}
+
+export interface AIProjectBriefResult {
+  projectTitle: string;
+  coupleNarrative: string;
+  deliverablesChecklist: {
+    name: string;
+    targetDuration: string;
+    recommendedEditorRole: string;
+    keyHighlights: string[];
+  }[];
+  shootingSequence: {
+    event: string;
+    shotRequirements: string;
+    musicVibe: string;
+  }[];
+  audioDirection: {
+    recommendedBpm: string;
+    genre: string;
+    moodGuidelines: string;
+  };
+  editingTurnaroundMilestones: {
+    stage: string;
+    targetDaysFromShoot: number;
+    description: string;
+  }[];
+  storageEstimateTb: string;
+}
+
+export interface AICostProfitResult {
+  projectAmount: number;
+  estimatedCosts: {
+    category: string;
+    estimatedAmount: number;
+    notes: string;
+  }[];
+  totalEstimatedCost: number;
+  netProfit: number;
+  profitMarginPercentage: number;
+  riskRating: 'Low' | 'Moderate' | 'High';
+  riskFactors: string[];
+  costOptimizationTips: string[];
+  suggestedSellingPrice: number;
 }
 

@@ -21,10 +21,12 @@ import {
   CalendarCheck,
   Check,
   Bell,
-  Palette
+  Palette,
+  IndianRupee
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Project, CalendarEvent } from '../types';
+import { Project, CalendarEvent, Studio } from '../types';
+import CalendarReminderModal from './calendar/CalendarReminderModal';
 
 export interface EventTypeMeta {
   type: string;
@@ -100,6 +102,30 @@ export const EVENT_TYPE_CONFIG: Record<string, EventTypeMeta> = {
     glowClass: 'shadow-[0_0_12px_rgba(239,68,68,0.25)]',
     description: 'Edits, music changes, client feedback & re-exports'
   },
+  payment_reminder: {
+    type: 'payment_reminder',
+    label: 'Payment Reminder (Blinks on Dashboard)',
+    shortLabel: 'Payment Due',
+    defaultColor: '#EF4444', // Red-500
+    icon: IndianRupee,
+    bgClass: 'bg-rose-500/20',
+    borderClass: 'border-rose-500/60',
+    textClass: 'text-rose-300',
+    glowClass: 'shadow-[0_0_15px_rgba(239,68,68,0.4)]',
+    description: 'Collect client balance, studio dues & vendor payments'
+  },
+  project_reminder: {
+    type: 'project_reminder',
+    label: 'Project Milestone Reminder (Blinks on Dashboard)',
+    shortLabel: 'Project Alert',
+    defaultColor: '#F59E0B', // Amber / Orange
+    icon: Bell,
+    bgClass: 'bg-amber-500/20',
+    borderClass: 'border-amber-500/60',
+    textClass: 'text-amber-300',
+    glowClass: 'shadow-[0_0_15px_rgba(245,158,11,0.35)]',
+    description: 'Critical teaser cuts, raw footage review & deliverables'
+  },
   reminder: {
     type: 'reminder',
     label: 'Reminder / Alert',
@@ -119,15 +145,25 @@ export const EVENT_TYPE_CONFIG: Record<string, EventTypeMeta> = {
  */
 export function getEventTypeMeta(type?: string, title?: string, customColor?: string): EventTypeMeta {
   const normType = (type || '').toLowerCase().trim();
+  const normTitle = (title || '').toLowerCase();
   
+  if (normType === 'payment_reminder' || (normTitle.includes('payment') && (normTitle.includes('remind') || normTitle.includes('due') || normTitle.includes('₹') || normTitle.includes('bal')))) {
+    const meta = EVENT_TYPE_CONFIG.payment_reminder;
+    return customColor ? { ...meta, defaultColor: customColor } : meta;
+  }
+
+  if (normType === 'project_reminder') {
+    const meta = EVENT_TYPE_CONFIG.project_reminder;
+    return customColor ? { ...meta, defaultColor: customColor } : meta;
+  }
+
   if (EVENT_TYPE_CONFIG[normType]) {
     const meta = EVENT_TYPE_CONFIG[normType];
     return customColor ? { ...meta, defaultColor: customColor } : meta;
   }
 
   // Fallback: Infer from event title
-  const normTitle = (title || '').toLowerCase();
-  if (normTitle.includes('remind') || normTitle.includes('alert') || normTitle.includes('follow') || normTitle.includes('due') || normTitle.includes('payment') || normTitle.includes('todo') || normTitle.includes('note')) {
+  if (normTitle.includes('remind') || normTitle.includes('alert') || normTitle.includes('follow') || normTitle.includes('due') || normTitle.includes('todo') || normTitle.includes('note')) {
     const meta = EVENT_TYPE_CONFIG.reminder;
     return customColor ? { ...meta, defaultColor: customColor } : meta;
   }
@@ -169,13 +205,14 @@ export function getEventTypeMeta(type?: string, title?: string, customColor?: st
 
 interface CalendarViewProps {
   projects: Project[];
+  studios?: Studio[];
   events: CalendarEvent[];
   onAddEvent?: (event: Omit<CalendarEvent, 'id'>) => Promise<void>;
   onUpdateEvent?: (id: string, updates: Partial<CalendarEvent>) => Promise<void>;
   onDeleteEvent?: (id: string) => Promise<void>;
 }
 
-export default function CalendarView({ projects, events, onAddEvent, onUpdateEvent, onDeleteEvent }: CalendarViewProps) {
+export default function CalendarView({ projects, studios = [], events, onAddEvent, onUpdateEvent, onDeleteEvent }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [filterType, setFilterType] = useState<'all' | 'shoot' | 'edit' | 'delivery' | 'meeting' | 'revision' | 'reminder'>('all');
 
@@ -183,6 +220,47 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [eventToDeleteId, setEventToDeleteId] = useState<string | null>(null);
+
+  // Dedicated Reminder Modal states (Payment & Project Reminders)
+  const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+  const [editingReminder, setEditingReminder] = useState<CalendarEvent | null>(null);
+  const [reminderInitialCategory, setReminderInitialCategory] = useState<'payment' | 'project' | 'general'>('payment');
+  const [reminderInitialDate, setReminderInitialDate] = useState<string>('');
+
+  const handleOpenReminderModal = (cat: 'payment' | 'project' | 'general' = 'payment') => {
+    setReminderInitialCategory(cat);
+    setReminderInitialDate(new Date().toISOString().split('T')[0]);
+    setEditingReminder(null);
+    setIsReminderModalOpen(true);
+  };
+
+  const handleOpenReminderModalForDate = (dateStr: string, cat: 'payment' | 'project' | 'general' = 'payment') => {
+    setReminderInitialCategory(cat);
+    setReminderInitialDate(dateStr);
+    setEditingReminder(null);
+    setIsReminderModalOpen(true);
+  };
+
+  const handleSaveReminder = async (reminderData: Omit<CalendarEvent, 'id'>) => {
+    if (onAddEvent) {
+      await onAddEvent(reminderData);
+    }
+  };
+
+  const handleUpdateReminder = async (id: string, reminderData: Partial<CalendarEvent>) => {
+    if (onUpdateEvent) {
+      await onUpdateEvent(id, reminderData);
+    }
+  };
+
+  const handleToggleReminderDone = async (e: React.MouseEvent, evt: CalendarEvent) => {
+    e.stopPropagation();
+    if (!onUpdateEvent) return;
+    await onUpdateEvent(evt.id, {
+      completed: !evt.completed,
+      completedAt: !evt.completed ? new Date().toISOString() : null
+    });
+  };
 
   // Form fields
   const [evtTitle, setEvtTitle] = useState('');
@@ -243,6 +321,9 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
   const filteredEvents = compiledEvents.filter(evt => {
     if (filterType === 'all') return true;
     const meta = getEventTypeMeta(evt.type, evt.title);
+    if (filterType === 'reminder') {
+      return meta.type === 'reminder' || meta.type === 'payment_reminder' || meta.type === 'project_reminder' || evt.isReminder;
+    }
     return meta.type === filterType || evt.type === filterType;
   });
 
@@ -254,7 +335,10 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
     delivery: compiledEvents.filter(e => getEventTypeMeta(e.type, e.title).type === 'delivery').length,
     meeting: compiledEvents.filter(e => getEventTypeMeta(e.type, e.title).type === 'meeting').length,
     revision: compiledEvents.filter(e => getEventTypeMeta(e.type, e.title).type === 'revision').length,
-    reminder: compiledEvents.filter(e => getEventTypeMeta(e.type, e.title).type === 'reminder').length,
+    reminder: compiledEvents.filter(e => {
+      const meta = getEventTypeMeta(e.type, e.title);
+      return meta.type === 'reminder' || meta.type === 'payment_reminder' || meta.type === 'project_reminder' || e.isReminder;
+    }).length,
   };
 
   // Calculate calendar grid days
@@ -411,6 +495,16 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
             <span>Reminders ({eventCounts.reminder})</span>
           </button>
 
+          {/* Set Reminder Action (Payment or Project) */}
+          <button
+            id="set-calendar-reminder-btn"
+            onClick={() => handleOpenReminderModal('payment')}
+            className="px-3.5 py-2 bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-bold rounded-xl text-xs font-mono flex items-center gap-1.5 cursor-pointer shadow-[0_0_15px_rgba(244,63,94,0.35)] hover:scale-105 transition-all ml-1 border border-rose-400/40"
+          >
+            <Bell className="w-3.5 h-3.5 animate-bounce" />
+            <span>+ Set Reminder</span>
+          </button>
+
           {/* Schedule Event Action */}
           <button
             id="schedule-calendar-event-btn"
@@ -492,15 +586,18 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
               const primaryEvent = dayEvents.length > 0 ? dayEvents[0] : null;
               const primaryMeta = primaryEvent ? getEventTypeMeta(primaryEvent.type, primaryEvent.title, primaryEvent.color) : null;
 
+              const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
               return (
                 <div 
                   key={`day-${day}`} 
-                  className={`h-28 p-2 rounded-2xl border transition-all flex flex-col justify-between group/day relative overflow-hidden ${
+                  onClick={() => handleOpenReminderModalForDate(dStr, 'payment')}
+                  className={`h-28 p-2 rounded-2xl border transition-all flex flex-col justify-between group/day relative overflow-hidden cursor-pointer hover:border-gold-500/80 hover:shadow-[0_0_20px_rgba(212,175,55,0.18)] ${
                     isToday 
                       ? 'bg-charcoal-900 border-gold-500/80 shadow-[0_0_15px_rgba(212,175,55,0.2)] ring-1 ring-gold-500/40' 
                       : dayEvents.length > 0
-                      ? 'bg-charcoal-900/80 hover:bg-charcoal-900 hover:border-gold-500/40 shadow-sm'
-                      : 'bg-charcoal-900/60 border-luxury-green-800/10 hover:border-gold-500/30 hover:bg-charcoal-900/90'
+                      ? 'bg-charcoal-900/80 hover:bg-charcoal-900 hover:border-gold-500/50 shadow-sm'
+                      : 'bg-charcoal-900/60 border-luxury-green-800/10 hover:border-gold-500/40 hover:bg-charcoal-900/90'
                   }`}
                   style={
                     !isToday && primaryMeta ? {
@@ -509,6 +606,7 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
                       borderLeftColor: primaryMeta.defaultColor
                     } : {}
                   }
+                  title={`Click date ${dStr} to set a reminder or view events`}
                 >
                   <div className="flex items-center justify-between w-full">
                     {isToday ? (
@@ -539,9 +637,16 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
                         )}
                       </div>
                     )}
-                    <span className={`text-xs font-mono font-bold ${isToday ? 'text-gold-400' : dayEvents.length > 0 ? 'text-white' : 'text-gray-400'}`}>
-                      {day}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {/* Hover action prompt: + Reminder */}
+                      <span className="opacity-0 group-hover/day:opacity-100 transition-opacity text-[8px] font-mono text-rose-300 font-bold bg-rose-500/20 border border-rose-500/40 px-1 py-0.5 rounded-md flex items-center gap-1">
+                        <Bell className="w-2.5 h-2.5 animate-bounce text-rose-400" />
+                        <span>+ Reminder</span>
+                      </span>
+                      <span className={`text-xs font-mono font-bold ${isToday ? 'text-gold-400' : dayEvents.length > 0 ? 'text-white' : 'text-gray-400'}`}>
+                        {day}
+                      </span>
+                    </div>
                   </div>
                   
                   {/* Event Badges with Color-Coded Dots and Border Highlights */}
@@ -561,17 +666,28 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
                             color: '#FFFFFF'
                           }}
                           title={`${meta.label}: ${evt.title} (${evt.start})`}
-                          onClick={() => {
-                            setEditingEvent(evt);
-                            setEvtTitle(evt.title);
-                            setEvtDate(evt.start);
-                            setEvtType(meta.type);
-                            setEvtColor(evt.color || meta.defaultColor);
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (evt.isReminder || meta.type === 'payment_reminder' || meta.type === 'project_reminder') {
+                              setEditingReminder(evt);
+                              setReminderInitialDate(evt.start);
+                              setIsReminderModalOpen(true);
+                            } else {
+                              setEditingEvent(evt);
+                              setEvtTitle(evt.title);
+                              setEvtDate(evt.start);
+                              setEvtType(meta.type);
+                              setEvtColor(evt.color || meta.defaultColor);
+                            }
                           }}
                         >
-                          {/* Color-Coded Category Dot */}
+                          {/* Color-Coded Category Dot / Alert Beacon */}
                           <span 
-                            className="w-1.5 h-1.5 rounded-full shrink-0 shadow-xs"
+                            className={`w-1.5 h-1.5 rounded-full shrink-0 shadow-xs ${
+                              (evt.isReminder || meta.type === 'payment_reminder') && !evt.completed
+                                ? 'animate-ping bg-rose-500'
+                                : ''
+                            }`}
                             style={{ 
                               backgroundColor: meta.defaultColor,
                               boxShadow: `0 0 5px ${meta.defaultColor}`
@@ -583,9 +699,17 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
                           >
                             <IconComponent className="w-2.5 h-2.5 text-charcoal-950 font-bold" />
                           </div>
-                          <span className="truncate font-semibold text-[9.5px] leading-tight">
+                          <span className={`truncate font-semibold text-[9.5px] leading-tight ${evt.completed ? 'line-through text-zinc-400' : ''}`}>
                             {evt.title}
                           </span>
+                          {evt.amount && (
+                            <span className="shrink-0 text-[8.5px] font-mono text-amber-300 font-bold ml-auto">
+                              ₹{evt.amount >= 1000 ? `${(evt.amount / 1000).toFixed(0)}k` : evt.amount}
+                            </span>
+                          )}
+                          {evt.completed && (
+                            <Check className="w-2.5 h-2.5 text-emerald-400 shrink-0 ml-auto" />
+                          )}
                         </div>
                       );
                     })}
@@ -618,11 +742,16 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
                   .map((evt) => {
                     const meta = getEventTypeMeta(evt.type, evt.title, evt.color);
                     const IconComponent = meta.icon;
+                    const isReminderType = evt.isReminder || meta.type === 'payment_reminder' || meta.type === 'project_reminder';
 
                     return (
                       <div 
                         key={evt.id} 
-                        className="p-3 bg-charcoal-950/80 border border-luxury-green-800/15 hover:border-gold-500/30 rounded-2xl space-y-1.5 relative overflow-hidden flex items-center justify-between gap-2.5 group transition-all"
+                        className={`p-3 bg-charcoal-950/80 border rounded-2xl space-y-1.5 relative overflow-hidden flex items-center justify-between gap-2.5 group transition-all ${
+                          isReminderType && !evt.completed
+                            ? 'border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.15)] hover:border-rose-400/60'
+                            : 'border-luxury-green-800/15 hover:border-gold-500/30'
+                        }`}
                       >
                         <div 
                           className="absolute top-0 left-0 bottom-0 w-1.5" 
@@ -630,7 +759,7 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
                         />
 
                         <div className="pl-2 min-w-0 flex-1">
-                          <div className="flex items-center space-x-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <span 
                               className="w-2 h-2 rounded-full inline-block shrink-0 shadow-xs" 
                               style={{ 
@@ -651,22 +780,70 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
                               {meta.shortLabel}
                             </span>
                             <span className="text-[9px] font-mono text-gray-500">• {evt.start}</span>
+
+                            {/* Live Alert on Dashboard Badge */}
+                            {isReminderType && (
+                              <span className={`text-[8.5px] font-mono px-1.5 py-0.5 rounded-md font-bold flex items-center gap-1 ${
+                                evt.completed
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
+                              }`}>
+                                {evt.completed ? (
+                                  <>✓ Completed</>
+                                ) : (
+                                  <>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping inline-block" />
+                                    <span>Dashboard Alert</span>
+                                  </>
+                                )}
+                              </span>
+                            )}
                           </div>
 
-                          <h4 className="text-xs font-semibold text-gray-100 truncate mt-1">{evt.title}</h4>
-                          {evt.coupleName && (
-                            <p className="text-[10px] text-gray-400 truncate">{evt.coupleName}</p>
-                          )}
+                          <h4 className={`text-xs font-semibold truncate mt-1 ${evt.completed ? 'line-through text-zinc-500' : 'text-gray-100'}`}>
+                            {evt.title}
+                          </h4>
+                          
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {evt.coupleName && (
+                              <p className="text-[10px] text-gray-400 truncate">{evt.coupleName}</p>
+                            )}
+                            {evt.amount && (
+                              <span className="text-[10px] font-mono font-bold text-amber-400">
+                                ₹{evt.amount.toLocaleString('en-IN')}
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                          {/* Quick Toggle Done for Reminders */}
+                          {isReminderType && (
+                            <button
+                              onClick={(e) => handleToggleReminderDone(e, evt)}
+                              title={evt.completed ? "Mark Incomplete" : "Mark Done"}
+                              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                evt.completed
+                                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/30'
+                                  : 'bg-charcoal-900 text-zinc-400 border-white/5 hover:text-emerald-400 hover:bg-emerald-500/10'
+                              }`}
+                            >
+                              <Check className="w-3 h-3 font-bold" />
+                            </button>
+                          )}
+
                           <button
                             onClick={() => {
-                              setEditingEvent(evt);
-                              setEvtTitle(evt.title);
-                              setEvtDate(evt.start);
-                              setEvtType(meta.type);
-                              setEvtColor(evt.color || meta.defaultColor);
+                              if (isReminderType) {
+                                setEditingReminder(evt);
+                                setIsReminderModalOpen(true);
+                              } else {
+                                setEditingEvent(evt);
+                                setEvtTitle(evt.title);
+                                setEvtDate(evt.start);
+                                setEvtType(meta.type);
+                                setEvtColor(evt.color || meta.defaultColor);
+                              }
                             }}
                             title="Edit Event"
                             className="p-1.5 rounded-lg bg-charcoal-900 hover:bg-gold-500/20 text-gold-400 border border-white/5 transition-colors cursor-pointer"
@@ -967,6 +1144,22 @@ export default function CalendarView({ projects, events, onAddEvent, onUpdateEve
           </div>
         </div>
       )}
+
+      {/* SET / EDIT REMINDER MODAL (Payment & Project alerts) */}
+      <CalendarReminderModal
+        isOpen={isReminderModalOpen}
+        onClose={() => {
+          setIsReminderModalOpen(false);
+          setEditingReminder(null);
+        }}
+        onSave={handleSaveReminder}
+        onUpdate={handleUpdateReminder}
+        editingReminder={editingReminder}
+        projects={projects}
+        studios={studios}
+        initialCategory={reminderInitialCategory}
+        initialDate={reminderInitialDate}
+      />
     </div>
   );
 }
