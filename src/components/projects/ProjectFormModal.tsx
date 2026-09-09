@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Plus, 
@@ -15,11 +15,14 @@ import {
   Tag as TagIcon,
   CheckCircle2,
   Info,
-  RotateCcw
+  RotateCcw,
+  Loader2,
+  ImageIcon
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Project, Studio, Editor, ProjectStatus, ProjectPriority, UserRole } from '../../types';
 import { PREDEFINED_PROJECT_TAGS } from '../../projectTags';
+import { uploadPhotoFile } from '../../services/storageService';
 
 interface ProjectFormModalProps {
   isOpen: boolean;
@@ -89,6 +92,39 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   const [secondEditorShare, setSecondEditorShare] = useState<number | ''>('');
 
   const [formResetNotice, setFormResetNotice] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handlePhotoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check size limit (15MB)
+    if (file.size > 15 * 1024 * 1024) {
+      setValidationError("File is too large. Please select an image under 15MB.");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setUploadFeedback(null);
+
+    const result = await uploadPhotoFile(
+      file,
+      'project_cover',
+      editingProject?.id || 'new-project',
+      'user'
+    );
+
+    setIsUploadingPhoto(false);
+    if (result.success && result.url) {
+      setCouplePhoto(result.url);
+      setUploadFeedback(`Photo uploaded successfully! (${(file.size / 1024).toFixed(0)} KB)`);
+      setTimeout(() => setUploadFeedback(null), 4000);
+    } else {
+      setValidationError(result.error || "Failed to upload photo.");
+    }
+  };
 
   useEffect(() => {
     if (editingProject) {
@@ -476,34 +512,79 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                   </div>
                 </div>
 
-                {/* 2. Cover Photo Preset Selection */}
-                <div className="p-4 bg-charcoal-950/60 rounded-2xl border border-white/5 space-y-2">
-                  <label className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider">
-                    2. Cover Photo Presets & URL
-                  </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {DEFAULT_COVERS.map((preset) => (
-                      <button
-                        key={preset.name}
-                        type="button"
-                        onClick={() => setCouplePhoto(preset.url)}
-                        className={`h-12 rounded-xl overflow-hidden relative cursor-pointer transition-all ${
-                          couplePhoto === preset.url ? 'ring-2 ring-gold-400' : 'opacity-70 hover:opacity-100'
-                        }`}
-                      >
-                        <img src={preset.url} alt="" className="w-full h-full object-cover" />
-                        <span className="absolute inset-0 bg-black/40 flex items-center justify-center text-[8px] text-white font-bold">
-                          {preset.name}
-                        </span>
-                      </button>
-                    ))}
+                {/* 2. Cover Photo Upload, Presets & URL */}
+                <div className="p-4 bg-charcoal-950/60 rounded-2xl border border-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-mono text-gray-400 uppercase tracking-wider">
+                      2. Project Photo & Cover Media
+                    </label>
+                    <span className="text-[9px] font-mono text-gold-400 bg-gold-500/10 px-2 py-0.5 rounded border border-gold-500/20 flex items-center gap-1">
+                      <ImageIcon className="w-3 h-3 text-gold-400" />
+                      Supabase Storage Ready
+                    </span>
                   </div>
+
+                  {/* Direct File Upload Zone */}
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border border-dashed border-gold-500/30 hover:border-gold-400 bg-charcoal-900/60 hover:bg-charcoal-900/90 rounded-xl p-3.5 flex items-center justify-center gap-3 cursor-pointer transition-colors group"
+                  >
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handlePhotoFileUpload}
+                      accept="image/png, image/jpeg, image/webp, image/heic" 
+                      className="hidden" 
+                    />
+                    {isUploadingPhoto ? (
+                      <div className="flex items-center gap-2 text-gold-400 text-xs font-mono">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Uploading photo to storage bucket...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2.5 text-xs text-gray-300 group-hover:text-gold-300 font-mono">
+                        <Upload className="w-4 h-4 text-gold-400" />
+                        <span>Upload Custom Photo (Click or Drag & Drop PNG, JPG up to 15MB)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {uploadFeedback && (
+                    <div className="text-[11px] font-mono text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg border border-emerald-500/20">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{uploadFeedback}</span>
+                    </div>
+                  )}
+
+                  {/* Presets */}
+                  <div>
+                    <span className="text-[9px] font-mono text-gray-500 uppercase block mb-1.5">Or Choose Fast Preset:</span>
+                    <div className="grid grid-cols-4 gap-2">
+                      {DEFAULT_COVERS.map((preset) => (
+                        <button
+                          key={preset.name}
+                          type="button"
+                          onClick={() => setCouplePhoto(preset.url)}
+                          className={`h-12 rounded-xl overflow-hidden relative cursor-pointer transition-all ${
+                            couplePhoto === preset.url ? 'ring-2 ring-gold-400 scale-[1.02]' : 'opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <img src={preset.url} alt="" className="w-full h-full object-cover" />
+                          <span className="absolute inset-0 bg-black/40 flex items-center justify-center text-[8px] text-white font-bold">
+                            {preset.name}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* URL Input */}
                   <input
                     type="text"
-                    placeholder="Or paste direct image URL..."
+                    placeholder="Or paste direct image URL (https://...)..."
                     value={couplePhoto}
                     onChange={(e) => setCouplePhoto(e.target.value)}
-                    className="w-full bg-charcoal-900 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-gold-500/40"
+                    className="w-full bg-charcoal-900 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-gold-500/40 font-mono"
                   />
                 </div>
 

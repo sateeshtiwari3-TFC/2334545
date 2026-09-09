@@ -46,6 +46,42 @@ export default function SystemBackupHub({
   const [importedJsonPreview, setImportedJsonPreview] = useState<any | null>(null);
   const [importFileName, setImportFileName] = useState<string | null>(null);
 
+  // Cloud SQL Sync & Migration state
+  const [isMigratingToSql, setIsMigratingToSql] = useState(false);
+  const [migrationResult, setMigrationResult] = useState<{ success: boolean; count?: number; message?: string } | null>(null);
+
+  const handleMigrateProjectsToSql = async () => {
+    setIsMigratingToSql(true);
+    setMigrationResult(null);
+    let successCount = 0;
+    try {
+      for (const p of projects) {
+        try {
+          const res = await fetch('/api/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(p)
+          });
+          if (res.ok) successCount++;
+        } catch (e) {
+          console.warn("Failed to sync project to SQL:", p.id, e);
+        }
+      }
+      setMigrationResult({
+        success: true,
+        count: successCount,
+        message: `Successfully synchronized ${successCount} projects to Cloud SQL relational database.`
+      });
+    } catch (err: any) {
+      setMigrationResult({
+        success: false,
+        message: err.message || "Migration encountered an issue."
+      });
+    } finally {
+      setIsMigratingToSql(false);
+    }
+  };
+
   // Manual 1-Click Database JSON Backup Generator
   const handleDownloadFullDatabaseJson = () => {
     const dateStamp = new Date().toISOString().split('T')[0];
@@ -155,24 +191,56 @@ export default function SystemBackupHub({
             </div>
           </div>
 
-          {/* Big Download Backup Button */}
-          <button
-            onClick={handleDownloadFullDatabaseJson}
-            className="flex items-center space-x-2.5 px-6 py-3.5 bg-gradient-to-r from-gold-600 via-gold-500 to-gold-400 hover:from-gold-500 hover:to-gold-300 text-charcoal-950 font-bold text-sm rounded-2xl shadow-xl shadow-gold-500/20 transition-all cursor-pointer shrink-0"
-          >
-            {downloadSuccess ? (
-              <>
-                <Check className="w-5 h-5 text-charcoal-950 animate-bounce" />
-                <span>Backup Generated & Downloaded!</span>
-              </>
-            ) : (
-              <>
-                <Download className="w-5 h-5" />
-                <span>Export Full System JSON</span>
-              </>
-            )}
-          </button>
+          {/* Action Buttons: Download JSON & Migrate to Cloud SQL */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+            <button
+              onClick={handleMigrateProjectsToSql}
+              disabled={isMigratingToSql}
+              className="flex items-center justify-center space-x-2 px-5 py-3.5 bg-luxury-green-900/60 hover:bg-luxury-green-800 text-luxury-green-200 border border-luxury-green-600/40 font-bold text-xs rounded-2xl shadow-lg transition-all cursor-pointer disabled:opacity-60"
+              title="Push all active Firestore projects to Cloud SQL relational database"
+            >
+              <Database className={`w-4 h-4 text-luxury-green-300 ${isMigratingToSql ? 'animate-spin' : ''}`} />
+              <span>{isMigratingToSql ? 'Syncing to SQL...' : 'Sync Projects to Cloud SQL'}</span>
+            </button>
+
+            <button
+              onClick={handleDownloadFullDatabaseJson}
+              className="flex items-center justify-center space-x-2.5 px-6 py-3.5 bg-gradient-to-r from-gold-600 via-gold-500 to-gold-400 hover:from-gold-500 hover:to-gold-300 text-charcoal-950 font-bold text-sm rounded-2xl shadow-xl shadow-gold-500/20 transition-all cursor-pointer"
+            >
+              {downloadSuccess ? (
+                <>
+                  <Check className="w-5 h-5 text-charcoal-950 animate-bounce" />
+                  <span>Backup Downloaded!</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-5 h-5" />
+                  <span>Export Full System JSON</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
+
+        {/* Migration Alert Notification */}
+        {migrationResult && (
+          <div className={`p-3.5 rounded-2xl text-xs flex items-center justify-between border ${
+            migrationResult.success
+              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30'
+              : 'bg-red-950/60 text-red-300 border-red-500/30'
+          }`}>
+            <div className="flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{migrationResult.message}</span>
+            </div>
+            <button
+              onClick={() => setMigrationResult(null)}
+              className="text-gray-400 hover:text-white text-xs font-mono ml-3 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Live Snapshot Entities Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4 border-t border-luxury-green-800/20 text-center font-mono">

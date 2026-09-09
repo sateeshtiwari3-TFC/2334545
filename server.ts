@@ -1,6 +1,6 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
+import fs from "fs";
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Load env variables
@@ -9,7 +9,16 @@ dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+
+  // In development within AI Studio sandbox, nginx listens on 8080 and reverse proxies to port 3000.
+  // In deployed Cloud Run production, Cloud Run expects the app to listen on process.env.PORT (typically 8080).
+  const isAiStudioSandbox = Boolean(
+    process.env.DEFAULT_APP_PORT || 
+    process.env.NGINX_PORT || 
+    process.env.CONTROL_PLANE_PORT ||
+    process.env.NODE_ENV === "development"
+  );
+  const PORT = isAiStudioSandbox ? 3000 : (Number(process.env.PORT) || 3000);
 
   app.use(express.json({ limit: "10mb" }));
 
@@ -1047,28 +1056,299 @@ As the Financial Operations Director at 'The Frame Cut Studio', evaluate the fin
     }
   });
 
+  // ==========================================
+  // Cloud SQL Database & Media Upload Endpoints
+  // ==========================================
+  
+  // Health & Database status
+  app.get("/api/db/status", async (req, res) => {
+    try {
+      const { db } = await import("./src/db/index.ts");
+      const { sql } = await import("drizzle-orm");
+      const result = await db.execute(sql`SELECT NOW() as current_time, current_database() as database_name;`);
+      
+      const supabaseConfigured = Boolean(process.env.SUPABASE_URL && (process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY));
+      const supabaseBucket = process.env.SUPABASE_STORAGE_BUCKET || 'theframecut-media';
+
+      res.json({
+        status: "connected",
+        provider: "Cloud SQL (PostgreSQL)",
+        info: result.rows[0],
+        supabase: {
+          configured: supabaseConfigured,
+          bucket: supabaseBucket,
+          url: process.env.SUPABASE_URL ? 'Configured' : 'Missing'
+        }
+      });
+    } catch (error: any) {
+      console.error("DB Health Check Failed:", error);
+      res.status(500).json({
+        status: "error",
+        error: error.message || "Database connection error"
+      });
+    }
+  });
+
+  // User profile registration / sync
+  app.post("/api/users/sync", async (req, res) => {
+    try {
+      const { uid, email, name, role, photoUrl } = req.body;
+      if (!uid || !email) {
+        return res.status(400).json({ error: "uid and email are required" });
+      }
+      const { getOrCreateUser } = await import("./src/db/users.ts");
+      const user = await getOrCreateUser(uid, email, name, role, photoUrl);
+      res.json({ success: true, user });
+    } catch (error: any) {
+      console.error("User sync error:", error);
+      res.status(500).json({ error: error.message || "Failed to sync user" });
+    }
+  });
+
+  // Get users from database
+  app.get("/api/users", async (req, res) => {
+    try {
+      const { getUsers } = await import("./src/db/users.ts");
+      const users = await getUsers();
+      res.json(users);
+    } catch (error: any) {
+      console.error("Fetch users error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch users" });
+    }
+  });
+
+  // Projects CRUD (Relational)
+  app.get("/api/projects", async (req, res) => {
+    try {
+      const { getSqlProjects } = await import("./src/db/repositories.ts");
+      const projects = await getSqlProjects();
+      res.json(projects);
+    } catch (error: any) {
+      console.error("Fetch projects error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch projects" });
+    }
+  });
+
+  app.post("/api/projects", async (req, res) => {
+    try {
+      const { upsertSqlProject } = await import("./src/db/repositories.ts");
+      const saved = await upsertSqlProject(req.body);
+      res.json({ success: true, project: saved });
+    } catch (error: any) {
+      console.error("Save project error:", error);
+      res.status(500).json({ error: error.message || "Failed to save project" });
+    }
+  });
+
+  app.delete("/api/projects/:id", async (req, res) => {
+    try {
+      const { deleteSqlProject } = await import("./src/db/repositories.ts");
+      const result = await deleteSqlProject(req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Delete project error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete project" });
+    }
+  });
+
+  // Sync other entities to SQL (Studios, Editors, Expenses, Payments)
+  app.post("/api/studios/sync", async (req, res) => {
+    try {
+      const { upsertSqlStudio } = await import("./src/db/repositories.ts");
+      const result = await upsertSqlStudio(req.body);
+      res.json({ success: true, studio: result });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/editors/sync", async (req, res) => {
+    try {
+      const { upsertSqlEditor } = await import("./src/db/repositories.ts");
+      const result = await upsertSqlEditor(req.body);
+      res.json({ success: true, editor: result });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/expenses/sync", async (req, res) => {
+    try {
+      const { upsertSqlExpense } = await import("./src/db/repositories.ts");
+      const result = await upsertSqlExpense(req.body);
+      res.json({ success: true, expense: result });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/payments/sync", async (req, res) => {
+    try {
+      const { upsertSqlPayment } = await import("./src/db/repositories.ts");
+      const result = await upsertSqlPayment(req.body);
+      res.json({ success: true, payment: result });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Media / Photo Upload API
+  // Handles Base64 or multipart images, saves metadata to database and returns storage URL
+  app.post("/api/media/upload", async (req, res) => {
+    try {
+      const { 
+        fileName, 
+        fileType, 
+        base64Data, 
+        associatedType, 
+        associatedId, 
+        uploadedBy 
+      } = req.body;
+
+      if (!base64Data) {
+        return res.status(400).json({ error: "base64Data is required" });
+      }
+
+      const mediaId = `media-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const safeName = (fileName || `upload-${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
+      
+      // Calculate file size from base64 string
+      const stringLength = base64Data.length - (base64Data.indexOf(',') + 1);
+      const sizeInBytes = Math.ceil(stringLength * 0.75);
+
+      // Check if user has Supabase credentials configured in environment
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
+      let finalPublicUrl = base64Data; // default data URI fallback
+
+      if (supabaseUrl && supabaseKey) {
+        try {
+          // Upload directly to Supabase Storage bucket 'tfc-media'
+          const base64Clean = base64Data.replace(/^data:image\/\w+;base64,/, '');
+          const buffer = Buffer.from(base64Clean, 'base64');
+          const bucketName = process.env.SUPABASE_STORAGE_BUCKET || 'tfc-media';
+          const uploadPath = `uploads/${Date.now()}_${safeName}`;
+
+          const response = await fetch(`${supabaseUrl}/storage/v1/object/${bucketName}/${uploadPath}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': fileType || 'image/jpeg',
+              'x-upsert': 'true'
+            },
+            body: buffer
+          });
+
+          if (response.ok) {
+            finalPublicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${uploadPath}`;
+          } else {
+            console.warn("Supabase storage response non-200, retaining high-res data URI:", await response.text());
+          }
+        } catch (supabaseErr) {
+          console.warn("Could not upload to Supabase storage bucket, using data URL fallback:", supabaseErr);
+        }
+      }
+
+      // Record in Cloud SQL media_uploads table
+      const { recordMediaUpload } = await import("./src/db/repositories.ts");
+      const record = await recordMediaUpload({
+        id: mediaId,
+        fileName: safeName,
+        fileType: fileType || 'image/jpeg',
+        fileSize: sizeInBytes,
+        url: finalPublicUrl,
+        storageProvider: (supabaseUrl && supabaseKey) ? 'supabase' : 'storage',
+        associatedType: associatedType || 'project_cover',
+        associatedId: associatedId || null,
+        uploadedBy: uploadedBy || 'system'
+      });
+
+      res.json({
+        success: true,
+        media: record,
+        url: finalPublicUrl
+      });
+    } catch (error: any) {
+      console.error("Media upload failed:", error);
+      res.status(500).json({ error: error.message || "Failed to process photo upload" });
+    }
+  });
+
+  // Get uploaded media gallery
+  app.get("/api/media", async (req, res) => {
+    try {
+      const { getMediaUploads } = await import("./src/db/repositories.ts");
+      const mediaList = await getMediaUploads();
+      res.json(mediaList);
+    } catch (error: any) {
+      console.error("Fetch media error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch media uploads" });
+    }
+  });
+
+  // Delete media from Supabase storage and SQL registry
+  app.post("/api/media/delete", async (req, res) => {
+    try {
+      const { filePath, bucketName = 'theframecut-media' } = req.body;
+      if (!filePath) {
+        return res.status(400).json({ error: "filePath is required" });
+      }
+
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
+
+      if (supabaseUrl && supabaseKey) {
+        try {
+          // Send DELETE to Supabase Storage API
+          await fetch(`${supabaseUrl}/storage/v1/object/${bucketName}/${filePath}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${supabaseKey}`,
+            }
+          });
+        } catch (storageErr) {
+          console.warn("Supabase server delete error:", storageErr);
+        }
+      }
+
+      res.json({ success: true, removed: filePath });
+    } catch (error: any) {
+      console.error("Delete media error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete media" });
+    }
+  });
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
 
   // Vite middleware for development or static server for production
-  if (process.env.NODE_ENV !== "production") {
+  // In development within AI Studio sandbox, we mount Vite middleware
+  // In production (Cloud Run deployment or built server.cjs), we serve pre-built static files from dist
+  const isDev = isAiStudioSandbox && process.env.NODE_ENV !== "production";
+  if (isDev) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = fs.existsSync(path.join(process.cwd(), "dist", "index.html"))
+      ? path.join(process.cwd(), "dist")
+      : (typeof __dirname !== "undefined" && fs.existsSync(path.join(__dirname, "index.html"))
+          ? __dirname
+          : path.join(process.cwd(), "dist"));
+
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.use((req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on http://0.0.0.0:${PORT} (mode: ${isDev ? "development" : "production"})`);
   });
 }
 

@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db, seedDatabaseIfEmpty } from './firebase';
 import { compressImage } from './utils';
+import { syncUserToDatabase, deleteImageFromSupabase } from './services/storageService';
 import { 
   Project, 
   Studio, 
@@ -80,20 +81,13 @@ const getTimestampMs = (val: any): number => {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    // Session state is strictly memory-based - clear any cached user credentials and require re-entry on refresh
     try {
-      const saved = localStorage.getItem('tfc_user');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error("Error reading saved user session:", e);
+      localStorage.removeItem('tfc_user');
+    } catch {
+      // ignore
     }
-    // Default logged-in Admin profile for instant live preview access
-    return {
-      uid: 'admin-satish',
-      email: 'sateesh2000',
-      name: 'Satish Tiwari',
-      role: 'admin',
-      createdAt: new Date()
-    };
+    return null;
   });
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
@@ -526,6 +520,17 @@ export default function App() {
     } catch (err) {
       console.error("Failed to log project creation audit entry:", err);
     }
+
+    // Mirror to Cloud SQL Relational Database
+    try {
+      fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanedProject)
+      }).catch(e => console.warn('SQL project sync note:', e));
+    } catch (sqlErr) {
+      console.warn("Could not sync project to SQL database:", sqlErr);
+    }
   };
 
   const handleUpdateProject = async (id: string, updates: Partial<Project>) => {
@@ -560,6 +565,18 @@ export default function App() {
       ...cleanedUpdates,
       updatedAt: serverTimestamp()
     }, { merge: true });
+
+    // Mirror updates to Cloud SQL Relational Database
+    try {
+      const mergedProject = { ...(existingProj || {}), ...cleanedUpdates, id };
+      fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanUndefined(mergedProject))
+      }).catch(e => console.warn('SQL update project note:', e));
+    } catch (sqlErr) {
+      console.warn("Could not sync project update to SQL database:", sqlErr);
+    }
 
     // Automatic Audit Trail Logging to Firestore 'revisionHistory'
     if (existingProj) {
@@ -795,6 +812,13 @@ export default function App() {
     }
     const docRef = doc(db, 'projects', id);
     await deleteDoc(docRef);
+
+    // Also mirror delete in SQL
+    try {
+      fetch(`/api/projects/${id}`, { method: 'DELETE' }).catch(e => console.warn('SQL delete project note:', e));
+    } catch (sqlErr) {
+      console.warn("Could not delete project from SQL database:", sqlErr);
+    }
   };
 
   // Revisions Logging
@@ -1134,6 +1158,18 @@ export default function App() {
 
   const handlePermanentDeleteRecycleBinItem = async (itemId: string) => {
     try {
+      const item = recycleBinItems.find(i => i.id === itemId);
+      
+      // Clean up Supabase storage image to avoid storage bloat when permanently deleting projects
+      if (item && item.itemType === 'project' && item.data) {
+        const projectData = item.data as Project;
+        if (projectData.couplePhoto) {
+          deleteImageFromSupabase(projectData.couplePhoto).catch(e => 
+            console.warn('Storage cleanup notice on permanent delete:', e)
+          );
+        }
+      }
+
       const binDocRef = doc(db, 'recycle_bin', itemId);
       await deleteDoc(binDocRef);
     } catch (error) {
@@ -1145,6 +1181,18 @@ export default function App() {
 
   const handleEmptyRecycleBin = async () => {
     try {
+      // Clean up storage for all deleted projects in recycle bin
+      for (const item of recycleBinItems) {
+        if (item.itemType === 'project' && item.data) {
+          const projectData = item.data as Project;
+          if (projectData.couplePhoto) {
+            deleteImageFromSupabase(projectData.couplePhoto).catch(e => 
+              console.warn('Storage cleanup notice on empty recycle bin:', e)
+            );
+          }
+        }
+      }
+
       const snap = await getDocs(collection(db, 'recycle_bin'));
       const batch = writeBatch(db);
       snap.forEach(d => batch.delete(d.ref));
@@ -1245,6 +1293,19 @@ export default function App() {
       console.error("Error fetching or initializing user document from Firestore:", e);
     }
 
+    // Also sync to Cloud SQL relational database
+    try {
+      syncUserToDatabase({
+        uid: userUid,
+        email,
+        name: loadedName,
+        role,
+        photoUrl: loadedPhotoURL,
+      });
+    } catch (sqlErr) {
+      console.warn("Could not sync user to relational database:", sqlErr);
+    }
+
     const profile: UserProfile = {
       uid: userUid,
       email,
@@ -1256,9 +1317,13 @@ export default function App() {
       createdAt: new Date()
     };
 
+    // User session state is strictly memory-based (no persistence to localStorage)
     setCurrentUser(profile);
-    localStorage.setItem('tfc_user', JSON.stringify(profile));
-    localStorage.setItem(`tfc_user_profile_${userUid}`, JSON.stringify(profile));
+    try {
+      localStorage.removeItem('tfc_user');
+    } catch {
+      // ignore
+    }
 
     // Redirect role-specific defaults
     if (role === 'editor' || role === 'studio') {
@@ -1270,7 +1335,11 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('tfc_user');
+    try {
+      localStorage.removeItem('tfc_user');
+    } catch {
+      // ignore
+    }
   };
 
   const handleUpdateProfile = async (updates: Partial<UserProfile>) => {
@@ -1287,8 +1356,8 @@ export default function App() {
       photoURL: finalPhotoURL
     };
 
+    // Strictly memory-based user session
     setCurrentUser(updatedProfile);
-    localStorage.setItem(`tfc_user_profile_${currentUser.uid}`, JSON.stringify(updatedProfile));
 
     try {
       // Sync update to firestore users collection
@@ -1319,6 +1388,15 @@ export default function App() {
           ownerName: updatedProfile.name
         });
       }
+
+      // Sync updated user to Cloud SQL
+      syncUserToDatabase({
+        uid: currentUser.uid,
+        email: updatedProfile.email,
+        name: updatedProfile.name,
+        role: updatedProfile.role,
+        photoUrl: finalPhotoURL,
+      });
     } catch (e) {
       console.error("Error updating user profile in Firestore:", e);
     }

@@ -200,6 +200,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     <input
                       type="text"
                       required
+                      autoComplete="username"
                       placeholder="sateesh2000 or name@framecut.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -224,7 +225,8 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     <input
                       type={showPassword ? "text" : "password"}
                       required
-                      placeholder={email ? "Password required" : "••••••••"}
+                      autoComplete="new-password"
+                      placeholder={email ? "Enter password" : "••••••••"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className={`w-full pl-12 pr-12 py-3 bg-black/35 backdrop-blur-md border rounded-full text-xs text-white placeholder-white/30 focus:outline-none focus:border-gold-400/80 focus:ring-2 focus:ring-gold-400/20 transition-all duration-300 shadow-inner ${
@@ -261,7 +263,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                   <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[11px] bg-black/40 backdrop-blur-md p-3 rounded-full border border-white/10">
                     <button
                       type="button"
-                      onClick={() => { setEmail('sateesh2000'); setPassword('Sateesh@504054'); }}
+                      onClick={() => { setEmail('sateesh2000'); setPassword(''); }}
                       className="text-white/80 hover:text-gold-300 cursor-pointer font-sans transition-colors"
                     >
                       Admin: <strong className="text-gold-300 font-mono">sateesh2000</strong>
@@ -269,7 +271,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     <span className="text-white/30 font-mono">•</span>
                     <button
                       type="button"
-                      onClick={() => { setEmail('vansh2000'); setPassword('8889995988'); }}
+                      onClick={() => { setEmail('vansh2000'); setPassword(''); }}
                       className="text-white/80 hover:text-gold-300 cursor-pointer font-sans transition-colors"
                     >
                       Editor: <strong className="text-gold-300 font-mono">vansh2000</strong>
